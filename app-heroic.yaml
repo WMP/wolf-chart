@@ -1,0 +1,73 @@
+# Game app as its OWN pod (unmodified games-on-whales image), wired into
+# Wolf's compositor via a shared hostPath socket dir. Scaled 0<->1 by the shim.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: app-heroic
+  namespace: games
+spec:
+  replicas: 0
+  strategy: {type: Recreate}
+  selector: {matchLabels: {app: app-heroic}}
+  template:
+    metadata:
+      labels: {app: app-heroic}
+    spec:
+      hostIPC: true                       # IpcMode:host from wolf specification
+      nodeSelector: {gpu: nvidia}
+      initContainers:
+        - name: fix-home-perms
+          image: busybox:stable
+          command: ["sh","-c","[ -f /home/retro/.perms-ok ] || { chown -R 1000:1000 /home/retro && touch /home/retro/.perms-ok && chown 1000:1000 /home/retro/.perms-ok; }"]
+          volumeMounts: [{name: home, mountPath: /home/retro}]
+      containers:
+        - name: heroic
+          image: ghcr.io/games-on-whales/heroic-games-launcher:edge
+          command: ["/bin/bash","-c"]
+          args:
+            - |
+              for i in $(seq 1 120); do ls /tmp/sockets/wayland-* >/dev/null 2>&1 && break; sleep 1; done
+              if ! ls /tmp/sockets/wayland-* >/dev/null 2>&1; then echo "[wrapper] no active Wolf session - exiting cleanly"; exit 0; fi
+              exec /entrypoint.sh
+          securityContext: {privileged: true}   # CapAdd+seccomp unconfined from spec
+          env:
+            - {name: SESSION_ENV_FILE, value: "/tmp/sockets/session-app-heroic.env"}
+            - {name: XDG_RUNTIME_DIR, value: "/tmp/sockets"}
+            - {name: WAYLAND_DISPLAY, value: "wayland-1"}
+            - {name: PULSE_SERVER, value: "/tmp/sockets/pulse-socket"}
+            - {name: PULSE_SINK, value: "virtual_sink_5503886949041201428"}
+            - {name: PULSE_SOURCE, value: "virtual_sink_5503886949041201428.monitor"}
+            - {name: GAMESCOPE_WIDTH, value: "2560"}
+            - {name: GAMESCOPE_HEIGHT, value: "1440"}
+            - {name: RUN_SWAY, value: "true"}
+            - {name: GAMESCOPE_REFRESH, value: "60"}
+            # 0 = pelny GUI Lutris (instalacja gier); 1 = kanapowy frontend na pada
+            - {name: PROTON_LOG, value: "1"}
+            - {name: GOW_REQUIRED_DEVICES, value: "/dev/input/* /dev/dri/* /dev/nvidia*"}
+            - {name: UNAME, value: "retro"}
+            - {name: PUID, value: "1000"}
+            - {name: PGID, value: "1000"}
+          lifecycle:
+            postStart:
+              exec:
+                command: ["sh","-c","ln -sf /usr/local/lib/libnvidia-allocator.so.1 /usr/lib/x86_64-linux-gnu/gbm/nvidia-drm_gbm.so 2>/dev/null; mkdir -p /usr/lib/x86_64-linux-gnu/gbm && ln -sf /usr/local/lib/libnvidia-allocator.so.1 /usr/lib/x86_64-linux-gnu/gbm/nvidia-drm_gbm.so"]
+          resources:
+            limits: {nvidia.com/gpu: 1, memory: 9Gi}
+            requests: {cpu: "2", memory: 3Gi}
+          volumeMounts:
+            - {name: sockets, mountPath: /tmp/sockets}
+            - {name: session-env, mountPath: /opt/gow/startup.d/05-session-env.sh, subPath: 05-session-env.sh}
+            - {name: session-env, mountPath: /opt/gow/startup.d/20-sway-tweaks.sh, subPath: 20-sway-tweaks.sh}
+            - {name: home, mountPath: /home/retro}
+            - {name: dev-input, mountPath: /dev/input}
+            - {name: dri, mountPath: /dev/dri}
+            - {name: installers, mountPath: /mnt/installers}
+            - {name: downloads, mountPath: /mnt/downloads, readOnly: true}
+      volumes:
+        - {name: sockets, hostPath: {path: /var/mnt/steam/wolf-sockets, type: Directory}}
+        - {name: session-env, configMap: {name: wolf-session-env}}
+        - {name: home, hostPath: {path: /var/mnt/steam/gow-heroic-home, type: DirectoryOrCreate}}
+        - {name: dev-input, hostPath: {path: /dev/input}}
+        - {name: dri, hostPath: {path: /dev/dri}}
+        - {name: installers, persistentVolumeClaim: {claimName: installers}}
+        - {name: downloads, nfs: {server: NFS_SERVER, path: /export/downloads, readOnly: true}}

@@ -1,0 +1,55 @@
+# Wolf pod: EGL headless compositor + NVENC + Moonlight server, no docker.
+# Games run as separate pods via the "process" runner (scaled by the shim).
+# NVKMS/display engine is not used.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wolf
+  namespace: games
+spec:
+  replicas: 1
+  strategy: {type: Recreate}
+  selector: {matchLabels: {app: wolf}}
+  template:
+    metadata:
+      labels: {app: wolf}
+    spec:
+      hostNetwork: true            # Moonlight: TCP/UDP 47984-48010 + mDNS
+      nodeSelector: {gpu: nvidia}
+      serviceAccountName: wolf     # shim scale deployments
+      initContainers:
+        - name: fetch-kubectl
+          image: bitnami/kubectl:latest
+          command: ["sh","-c","cp $(which kubectl) /shim/kubectl && chmod 755 /shim/kubectl"]
+          volumeMounts: [{name: shim-bin, mountPath: /shim}]
+      containers:
+        - name: wolf
+          image: ghcr.io/games-on-whales/wolf:stable
+          securityContext: {privileged: true}   # /dev/uinput - virtual gamepads
+          env:
+            - {name: XDG_RUNTIME_DIR, value: "/tmp/sockets"}
+            - {name: WOLF_CFG_FOLDER, value: "/etc/wolf/cfg"}
+            - {name: WOLF_LOG_LEVEL, value: "INFO"}
+          lifecycle:
+            postStart:
+              exec:
+                command: ["sh","-c","chown root:root /tmp/sockets; rm -rf /tmp/sockets/pulse /tmp/sockets/pulse-socket /tmp/sockets/dbus-1 /tmp/sockets/at-spi /tmp/sockets/dconf /tmp/sockets/doc /tmp/sockets/wayland-* /tmp/sockets/wolf.sock /tmp/sockets/sway* 2>/dev/null; ln -sf /usr/local/lib/libnvidia-allocator.so.1 /usr/lib/x86_64-linux-gnu/gbm/nvidia-drm_gbm.so"]
+          resources:
+            limits: {nvidia.com/gpu: 1, memory: 1536Mi}
+            requests: {cpu: 250m, memory: 256Mi}
+          volumeMounts:
+            - {name: cfg, mountPath: /etc/wolf/cfg}
+            - {name: uinput, mountPath: /dev/uinput}
+            - {name: dev-input, mountPath: /dev/input}
+            - {name: dri, mountPath: /dev/dri}
+            - {name: sockets, mountPath: /tmp/sockets}
+            - {name: shim-bin, mountPath: /shim}
+            - {name: shim-src, mountPath: /shim-cfg}
+      volumes:
+        - {name: cfg, hostPath: {path: /var/mnt/steam/wolf-cfg, type: DirectoryOrCreate}}
+        - {name: uinput, hostPath: {path: /dev/uinput, type: CharDevice}}
+        - {name: dev-input, hostPath: {path: /dev/input}}
+        - {name: dri, hostPath: {path: /dev/dri}}
+        - {name: sockets, hostPath: {path: /var/mnt/steam/wolf-sockets, type: DirectoryOrCreate}}
+        - {name: shim-bin, emptyDir: {}}
+        - {name: shim-src, configMap: {name: wolf-shim, defaultMode: 0755}}

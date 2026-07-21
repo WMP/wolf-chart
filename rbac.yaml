@@ -1,0 +1,18 @@
+# ServiceAccount + Role: lets the Wolf pod scale the game-app Deployments in this namespace.
+apiVersion: v1
+kind: ServiceAccount
+metadata: {name: wolf, namespace: games}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata: {name: wolf-session-scaler, namespace: games}
+rules:
+  - apiGroups: ["apps"]
+    resources: ["deployments", "deployments/scale"]
+    verbs: ["get", "list", "watch", "patch", "update"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata: {name: wolf-session-scaler, namespace: games}
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: Role, name: wolf-session-scaler}
+subjects: [{kind: ServiceAccount, name: wolf, namespace: games}]

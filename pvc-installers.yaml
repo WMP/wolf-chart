@@ -1,0 +1,14 @@
+# Shared (RWX) space for game/app installers - NFS-backed.
+# Mounted RW into the app pods as /mnt/installers.
+# instalatory spoza store'ow, mody. NFS RWX = wielu klientow naraz.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: installers
+  namespace: games
+spec:
+  accessModes: ["ReadWriteMany"]
+  storageClassName: nfs-bulk
+  resources:
+    requests:
+      storage: 200Gi
