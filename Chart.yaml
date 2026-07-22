@@ -1,0 +1,29 @@
+apiVersion: v2
+name: wolf
+description: >-
+  Wolf (games-on-whales) game streaming on Kubernetes: a Moonlight server pod
+  (headless EGL compositor + hardware encoder) plus per-launcher game pods
+  scaled 0<->1 on demand. Supports NVIDIA, AMD and Intel GPUs.
+version: 0.1.0
+appVersion: stable
+kubeVersion: ">=1.24.0-0"
+home: https://github.com/games-on-whales/wolf
+sources:
+  - https://github.com/WMP/wolf-chart
+  - https://github.com/games-on-whales/wolf
+  - https://github.com/games-on-whales/gow
+keywords:
+  - game-streaming
+  - moonlight
+  - wolf
+  - games-on-whales
+  - gpu
+  - steam
+annotations:
+  licenses: MIT
+dependencies:
+  - name: common
+    repository: oci://registry-1.docker.io/bitnamicharts
+    version: 2.x.x
+    tags:
+      - bitnami-common

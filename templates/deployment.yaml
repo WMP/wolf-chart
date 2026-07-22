@@ -1,0 +1,213 @@
+apiVersion: {{ include "common.capabilities.deployment.apiVersion" . }}
+kind: Deployment
+metadata:
+  name: {{ include "common.names.fullname" . }}
+  namespace: {{ include "common.names.namespace" . | quote }}
+  labels: {{- include "common.labels.standard" (dict "customLabels" .Values.commonLabels "context" $) | nindent 4 }}
+    app.kubernetes.io/component: server
+  {{- if .Values.commonAnnotations }}
+  annotations: {{- include "common.tplvalues.render" (dict "value" .Values.commonAnnotations "context" $) | nindent 4 }}
+  {{- end }}
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels: {{- include "common.labels.matchLabels" (dict "customLabels" .Values.commonLabels "context" $) | nindent 6 }}
+      app.kubernetes.io/component: server
+  template:
+    metadata:
+      labels: {{- include "common.labels.standard" (dict "customLabels" (include "common.tplvalues.merge" (dict "values" (list .Values.podLabels .Values.commonLabels) "context" $) | fromYaml) "context" $) | nindent 8 }}
+        app.kubernetes.io/component: server
+      annotations:
+        checksum/scripts: {{ include (print $.Template.BasePath "/configmap-scripts.yaml") . | sha256sum }}
+        {{- if .Values.appsSync.enabled }}
+        checksum/apps: {{ include (print $.Template.BasePath "/configmap-apps.yaml") . | sha256sum }}
+        checksum/sync: {{ include (print $.Template.BasePath "/configmap-sync.yaml") . | sha256sum }}
+        {{- end }}
+        {{- if .Values.podAnnotations }}
+        {{- include "common.tplvalues.render" (dict "value" .Values.podAnnotations "context" $) | nindent 8 }}
+        {{- end }}
+    spec:
+      {{- include "wolf.imagePullSecrets" . | nindent 6 }}
+      serviceAccountName: {{ include "wolf.serviceAccountName" . }}
+      automountServiceAccountToken: {{ .Values.serviceAccount.automountServiceAccountToken }}
+      {{- if .Values.hostNetwork }}
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
+      {{- end }}
+      {{- if .Values.gpu.runtimeClassName }}
+      runtimeClassName: {{ .Values.gpu.runtimeClassName }}
+      {{- end }}
+      {{- if .Values.nodeSelector }}
+      nodeSelector: {{- include "common.tplvalues.render" (dict "value" .Values.nodeSelector "context" $) | nindent 8 }}
+      {{- end }}
+      {{- if .Values.affinity }}
+      affinity: {{- include "common.tplvalues.render" (dict "value" .Values.affinity "context" $) | nindent 8 }}
+      {{- end }}
+      {{- if .Values.tolerations }}
+      tolerations: {{- include "common.tplvalues.render" (dict "value" .Values.tolerations "context" $) | nindent 8 }}
+      {{- end }}
+      {{- if .Values.priorityClassName }}
+      priorityClassName: {{ .Values.priorityClassName | quote }}
+      {{- end }}
+      terminationGracePeriodSeconds: {{ .Values.terminationGracePeriodSeconds }}
+      initContainers:
+        # copies kubectl in for the session shim (scales the game Deployments)
+        - name: fetch-kubectl
+          image: {{ include "wolf.kubectl.image" . }}
+          imagePullPolicy: {{ .Values.kubectlImage.pullPolicy }}
+          command: ["sh", "-c", "cp $(which kubectl) /shim/kubectl && chmod 755 /shim/kubectl"]
+          volumeMounts:
+            - name: shim-bin
+              mountPath: /shim
+        {{- if .Values.initContainers }}
+        {{- include "common.tplvalues.render" (dict "value" .Values.initContainers "context" $) | nindent 8 }}
+        {{- end }}
+      containers:
+        - name: wolf
+          image: {{ include "wolf.image" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          {{- if .Values.containerSecurityContext.enabled }}
+          securityContext: {{- include "common.compatibility.renderSecurityContext" (dict "secContext" .Values.containerSecurityContext "context" $) | nindent 12 }}
+          {{- end }}
+          {{- if .Values.diagnosticMode.enabled }}
+          command: {{- include "common.tplvalues.render" (dict "value" .Values.diagnosticMode.command "context" $) | nindent 12 }}
+          args: {{- include "common.tplvalues.render" (dict "value" .Values.diagnosticMode.args "context" $) | nindent 12 }}
+          {{- end }}
+          env:
+            - name: XDG_RUNTIME_DIR
+              value: /tmp/sockets
+            - name: WOLF_CFG_FOLDER
+              value: /etc/wolf/cfg
+            - name: WOLF_LOG_LEVEL
+              value: {{ .Values.logLevel | quote }}
+            - name: WOLF_SOCKET_PATH
+              value: /tmp/sockets/wolf.sock
+            - name: SHIM_STARTUP_TIMEOUT
+              value: {{ .Values.appDefaults.startupTimeoutSeconds | quote }}
+            {{- if eq .Values.gpu.vendor "nvidia" }}
+            - name: NVIDIA_VISIBLE_DEVICES
+              value: all
+            - name: NVIDIA_DRIVER_CAPABILITIES
+              value: all
+            {{- end }}
+            {{- if .Values.gpu.renderNode }}
+            - name: WOLF_RENDER_NODE
+              value: {{ .Values.gpu.renderNode | quote }}
+            {{- end }}
+            {{- if .Values.extraEnvVars }}
+            {{- include "common.tplvalues.render" (dict "value" .Values.extraEnvVars "context" $) | nindent 12 }}
+            {{- end }}
+          {{- if .Values.lifecycleHooks }}
+          lifecycle: {{- include "common.tplvalues.render" (dict "value" .Values.lifecycleHooks "context" $) | nindent 12 }}
+          {{- else }}
+          lifecycle:
+            postStart:
+              exec:
+                # clean stale session sockets from previous runs + ensure the
+                # NVIDIA GBM symlink (no-op on AMD/Intel and where the
+                # container toolkit already created it)
+                command: ["sh", "-c", "chown root:root /tmp/sockets; rm -rf /tmp/sockets/pulse /tmp/sockets/pulse-socket /tmp/sockets/dbus-1 /tmp/sockets/at-spi /tmp/sockets/dconf /tmp/sockets/doc /tmp/sockets/wayland-* /tmp/sockets/wolf.sock /tmp/sockets/sway* 2>/dev/null; sh /shim-cfg/ensure-gbm-symlink.sh"]
+          {{- end }}
+          resources: {{- include "wolf.mergedResources" (dict "resources" .Values.resources "context" $) | nindent 12 }}
+          volumeMounts:
+            - name: cfg
+              mountPath: /etc/wolf/cfg
+            - name: sockets
+              mountPath: /tmp/sockets
+            - name: shim-bin
+              mountPath: /shim
+            - name: scripts
+              mountPath: {{ dir (include "wolf.shim.path" .) }}
+            {{- if .Values.devices.uinput }}
+            - name: uinput
+              mountPath: /dev/uinput
+            {{- end }}
+            {{- if .Values.devices.input }}
+            - name: dev-input
+              mountPath: /dev/input
+            {{- end }}
+            {{- if .Values.devices.dri }}
+            - name: dri
+              mountPath: /dev/dri
+            {{- end }}
+            {{- if .Values.extraVolumeMounts }}
+            {{- include "common.tplvalues.render" (dict "value" .Values.extraVolumeMounts "context" $) | nindent 12 }}
+            {{- end }}
+        {{- if .Values.appsSync.enabled }}
+        - name: apps-sync
+          image: {{ include "wolf.appsSync.image" . }}
+          imagePullPolicy: {{ .Values.appsSync.image.pullPolicy }}
+          command: ["python3", "/opt/wolf-sync/apps-sync.py"]
+          env:
+            - name: WOLF_SOCKET_PATH
+              value: /tmp/sockets/wolf.sock
+            - name: APPS_FILE
+              value: /opt/wolf-apps/apps.json
+            - name: SHIM_MARKER
+              value: {{ include "wolf.shim.path" . | quote }}
+            - name: PRUNE_DEFAULT
+              value: {{ .Values.appsSync.pruneDefault | quote }}
+            - name: SYNC_INTERVAL
+              value: {{ .Values.appsSync.interval | quote }}
+            - name: SAMPLE_CACHE
+              value: /etc/wolf/cfg/.pipelines-sample.json
+          {{- if .Values.appsSync.resources }}
+          resources: {{- toYaml .Values.appsSync.resources | nindent 12 }}
+          {{- end }}
+          volumeMounts:
+            - name: sockets
+              mountPath: /tmp/sockets
+            - name: sync
+              mountPath: /opt/wolf-sync
+            - name: apps
+              mountPath: /opt/wolf-apps
+            - name: cfg
+              mountPath: /etc/wolf/cfg
+        {{- end }}
+        {{- if .Values.sidecars }}
+        {{- include "common.tplvalues.render" (dict "value" .Values.sidecars "context" $) | nindent 8 }}
+        {{- end }}
+      volumes:
+        - name: cfg
+          hostPath:
+            path: {{ include "wolf.paths.config" . }}
+            type: DirectoryOrCreate
+        - name: sockets
+          hostPath:
+            path: {{ include "wolf.paths.sockets" . }}
+            type: DirectoryOrCreate
+        - name: shim-bin
+          emptyDir: {}
+        - name: scripts
+          configMap:
+            name: {{ printf "%s-scripts" (include "common.names.fullname" .) }}
+            defaultMode: 0755
+        {{- if .Values.appsSync.enabled }}
+        - name: apps
+          configMap:
+            name: {{ printf "%s-apps" (include "common.names.fullname" .) }}
+        - name: sync
+          configMap:
+            name: {{ printf "%s-sync" (include "common.names.fullname" .) }}
+        {{- end }}
+        {{- if .Values.devices.uinput }}
+        - name: uinput
+          hostPath:
+            path: /dev/uinput
+            type: CharDevice
+        {{- end }}
+        {{- if .Values.devices.input }}
+        - name: dev-input
+          hostPath:
+            path: /dev/input
+        {{- end }}
+        {{- if .Values.devices.dri }}
+        - name: dri
+          hostPath:
+            path: /dev/dri
+        {{- end }}
+        {{- if .Values.extraVolumes }}
+        {{- include "common.tplvalues.render" (dict "value" .Values.extraVolumes "context" $) | nindent 8 }}
+        {{- end }}

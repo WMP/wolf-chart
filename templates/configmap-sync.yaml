@@ -1,0 +1,17 @@
+{{- if .Values.appsSync.enabled }}
+# Separate from the -scripts ConfigMap on purpose: only the wolf pod's
+# apps-sync sidecar consumes this, so editing the sync script does not
+# churn the game pods' checksum/scripts annotation.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ printf "%s-sync" (include "common.names.fullname" .) }}
+  namespace: {{ include "common.names.namespace" . | quote }}
+  labels: {{- include "common.labels.standard" (dict "customLabels" .Values.commonLabels "context" $) | nindent 4 }}
+  {{- if .Values.commonAnnotations }}
+  annotations: {{- include "common.tplvalues.render" (dict "value" .Values.commonAnnotations "context" $) | nindent 4 }}
+  {{- end }}
+data:
+  apps-sync.py: |-
+{{ .Files.Get "files/apps-sync.py" | indent 4 }}
+{{- end }}

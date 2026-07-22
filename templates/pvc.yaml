@@ -1,0 +1,19 @@
+{{- if and .Values.storage.installers.enabled (not .Values.storage.installers.existingClaim) }}
+# Shared RWX space for game/app installers and mods,
+# mounted RW into the game pods as /mnt/installers.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ printf "%s-installers" (include "common.names.fullname" .) }}
+  namespace: {{ include "common.names.namespace" . | quote }}
+  labels: {{- include "common.labels.standard" (dict "customLabels" .Values.commonLabels "context" $) | nindent 4 }}
+  {{- if .Values.commonAnnotations }}
+  annotations: {{- include "common.tplvalues.render" (dict "value" .Values.commonAnnotations "context" $) | nindent 4 }}
+  {{- end }}
+spec:
+  accessModes: {{- toYaml .Values.storage.installers.accessModes | nindent 4 }}
+  resources:
+    requests:
+      storage: {{ .Values.storage.installers.size | quote }}
+  {{- include "common.storage.class" (dict "persistence" .Values.storage.installers "global" .Values.global) | nindent 2 }}
+{{- end }}

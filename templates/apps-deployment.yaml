@@ -1,0 +1,207 @@
+{{- range $name, $app := .Values.apps }}
+{{- if $app.enabled }}
+{{- $deployName := include "wolf.app.deployName" (dict "name" $name "context" $) }}
+{{- $ns := include "common.names.namespace" $ }}
+{{- $existing := lookup "apps/v1" "Deployment" $ns $deployName }}
+---
+apiVersion: {{ include "common.capabilities.deployment.apiVersion" $ }}
+kind: Deployment
+metadata:
+  name: {{ $deployName }}
+  namespace: {{ $ns | quote }}
+  labels: {{- include "common.labels.standard" (dict "customLabels" $.Values.commonLabels "context" $) | nindent 4 }}
+    app.kubernetes.io/component: {{ printf "app-%s" $name }}
+  {{- if $.Values.commonAnnotations }}
+  annotations: {{- include "common.tplvalues.render" (dict "value" $.Values.commonAnnotations "context" $) | nindent 4 }}
+  {{- end }}
+spec:
+  # Scaled 0<->1 by the session shim; a real `helm install/upgrade` preserves
+  # the current scale via `lookup`. CAVEAT: client-side renders (helm
+  # template, helm diff, ArgoCD/Flux) cannot call lookup and render 0 - see
+  # "Known limitations" in the repo README (GitOps needs ignoreDifferences
+  # on /spec/replicas).
+  replicas: {{ dig "spec" "replicas" 0 ($existing | default (dict)) }}
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels: {{- include "common.labels.matchLabels" (dict "customLabels" $.Values.commonLabels "context" $) | nindent 6 }}
+      app.kubernetes.io/component: {{ printf "app-%s" $name }}
+  template:
+    metadata:
+      labels: {{- include "common.labels.standard" (dict "customLabels" $.Values.commonLabels "context" $) | nindent 8 }}
+        app.kubernetes.io/component: {{ printf "app-%s" $name }}
+      annotations:
+        checksum/scripts: {{ include (print $.Template.BasePath "/configmap-scripts.yaml") $ | sha256sum }}
+    spec:
+      # IpcMode:host from the Wolf app spec
+      hostIPC: true
+      {{- if $.Values.gpu.runtimeClassName }}
+      runtimeClassName: {{ $.Values.gpu.runtimeClassName }}
+      {{- end }}
+      {{- include "common.images.renderPullSecrets" (dict "images" (list $app.image $.Values.busyboxImage) "context" $) | nindent 6 }}
+      # MUST land on the same node as the wolf pod (shared hostPath sockets +
+      # hostIPC) - follow wolf wherever it runs:
+      affinity:
+        podAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchLabels: {{- include "wolf.serverMatchLabels" $ | nindent 18 }}
+              topologyKey: kubernetes.io/hostname
+      {{- if $.Values.tolerations }}
+      tolerations: {{- include "common.tplvalues.render" (dict "value" $.Values.tolerations "context" $) | nindent 8 }}
+      {{- end }}
+      initContainers:
+        - name: fix-home-perms
+          image: {{ include "wolf.busybox.image" $ }}
+          imagePullPolicy: {{ $.Values.busyboxImage.pullPolicy }}
+          command:
+            - sh
+            - -c
+            - >-
+              [ -f /home/{{ $.Values.session.user }}/.perms-ok ] ||
+              { chown -R {{ $.Values.session.uid }}:{{ $.Values.session.gid }} /home/{{ $.Values.session.user }} &&
+              touch /home/{{ $.Values.session.user }}/.perms-ok &&
+              chown {{ $.Values.session.uid }}:{{ $.Values.session.gid }} /home/{{ $.Values.session.user }}/.perms-ok; };
+              {{- range ($app.chownDirs | default (list)) }}
+              chown {{ $.Values.session.uid }}:{{ $.Values.session.gid }} {{ . }};
+              {{- end }}
+              true
+          volumeMounts:
+            - name: home
+              mountPath: /home/{{ $.Values.session.user }}
+            {{- if $app.extraVolumeMounts }}
+            {{- include "common.tplvalues.render" (dict "value" $app.extraVolumeMounts "context" $) | nindent 12 }}
+            {{- end }}
+      containers:
+        - name: {{ $name }}
+          image: {{ include "wolf.app.image" (dict "app" $app "context" $) }}
+          imagePullPolicy: {{ $app.image.pullPolicy | default "IfNotPresent" }}
+          command: ["/bin/bash", "-c"]
+          # wait for an active Wolf session socket; exit cleanly when there is
+          # none (e.g. replicas left at 1 after an unclean session end)
+          args:
+            - |
+              for i in $(seq 1 120); do ls /tmp/sockets/wayland-* >/dev/null 2>&1 && break; sleep 1; done
+              if ! ls /tmp/sockets/wayland-* >/dev/null 2>&1; then echo "[wrapper] no active Wolf session - exiting cleanly"; exit 0; fi
+              exec /entrypoint.sh
+          # CapAdd + seccomp unconfined from the Wolf app spec
+          securityContext:
+            privileged: true
+          env:
+            - name: SESSION_ENV_FILE
+              value: /tmp/sockets/session-{{ $deployName }}.env
+            - name: XDG_RUNTIME_DIR
+              value: /tmp/sockets
+            - name: WAYLAND_DISPLAY
+              value: wayland-1
+            - name: PULSE_SERVER
+              value: /tmp/sockets/pulse-socket
+            - name: GAMESCOPE_WIDTH
+              value: {{ $.Values.session.width | quote }}
+            - name: GAMESCOPE_HEIGHT
+              value: {{ $.Values.session.height | quote }}
+            - name: GAMESCOPE_REFRESH
+              value: {{ $.Values.session.refresh | quote }}
+            - name: RUN_SWAY
+              value: {{ $.Values.session.runSway | quote }}
+            - name: GOW_REQUIRED_DEVICES
+              value: {{ include "wolf.gowRequiredDevices" $ | quote }}
+            - name: UNAME
+              value: {{ $.Values.session.user | quote }}
+            - name: PUID
+              value: {{ $.Values.session.uid | quote }}
+            - name: PGID
+              value: {{ $.Values.session.gid | quote }}
+            {{- if eq $.Values.gpu.vendor "nvidia" }}
+            - name: NVIDIA_VISIBLE_DEVICES
+              value: all
+            - name: NVIDIA_DRIVER_CAPABILITIES
+              value: all
+            {{- end }}
+            {{- if $.Values.appDefaults.extraEnvVars }}
+            {{- include "common.tplvalues.render" (dict "value" $.Values.appDefaults.extraEnvVars "context" $) | nindent 12 }}
+            {{- end }}
+            {{- if $app.env }}
+            {{- include "common.tplvalues.render" (dict "value" $app.env "context" $) | nindent 12 }}
+            {{- end }}
+          lifecycle:
+            postStart:
+              exec:
+                command: ["sh", "/opt/wolf/ensure-gbm-symlink.sh"]
+          resources: {{- include "wolf.mergedResources" (dict "resources" ($app.resources | default $.Values.appDefaults.resources) "context" $) | nindent 12 }}
+          volumeMounts:
+            - name: sockets
+              mountPath: /tmp/sockets
+            - name: home
+              mountPath: /home/{{ $.Values.session.user }}
+            - name: scripts
+              mountPath: /opt/gow/startup.d/05-session-env.sh
+              subPath: 05-session-env.sh
+            {{- if $app.swayTweaks }}
+            - name: scripts
+              mountPath: /opt/gow/startup.d/20-sway-tweaks.sh
+              subPath: 20-sway-tweaks.sh
+            {{- end }}
+            - name: scripts
+              mountPath: /opt/wolf/ensure-gbm-symlink.sh
+              subPath: ensure-gbm-symlink.sh
+            {{- if $.Values.devices.input }}
+            - name: dev-input
+              mountPath: /dev/input
+            {{- end }}
+            {{- if $.Values.devices.dri }}
+            - name: dri
+              mountPath: /dev/dri
+            {{- end }}
+            {{- if or $.Values.storage.installers.enabled $.Values.storage.installers.existingClaim }}
+            - name: installers
+              mountPath: /mnt/installers
+            {{- end }}
+            {{- if $.Values.storage.downloads.enabled }}
+            - name: downloads
+              mountPath: /mnt/downloads
+              readOnly: true
+            {{- end }}
+            {{- if $app.extraVolumeMounts }}
+            {{- include "common.tplvalues.render" (dict "value" $app.extraVolumeMounts "context" $) | nindent 12 }}
+            {{- end }}
+      volumes:
+        - name: sockets
+          hostPath:
+            path: {{ include "wolf.paths.sockets" $ }}
+            type: Directory
+        - name: home
+          hostPath:
+            path: {{ $app.home | default (printf "%s/%s" (include "wolf.paths.homes" $) $name) }}
+            type: DirectoryOrCreate
+        - name: scripts
+          configMap:
+            name: {{ printf "%s-scripts" (include "common.names.fullname" $) }}
+            defaultMode: 0755
+        {{- if $.Values.devices.input }}
+        - name: dev-input
+          hostPath:
+            path: /dev/input
+        {{- end }}
+        {{- if $.Values.devices.dri }}
+        - name: dri
+          hostPath:
+            path: /dev/dri
+        {{- end }}
+        {{- if or $.Values.storage.installers.enabled $.Values.storage.installers.existingClaim }}
+        - name: installers
+          persistentVolumeClaim:
+            claimName: {{ $.Values.storage.installers.existingClaim | default (printf "%s-installers" (include "common.names.fullname" $)) }}
+        {{- end }}
+        {{- if $.Values.storage.downloads.enabled }}
+        - name: downloads
+          nfs:
+            server: {{ required "storage.downloads.server is required when storage.downloads.enabled" $.Values.storage.downloads.server }}
+            path: {{ required "storage.downloads.path is required when storage.downloads.enabled" $.Values.storage.downloads.path }}
+            readOnly: true
+        {{- end }}
+        {{- if $app.extraVolumes }}
+        {{- include "common.tplvalues.render" (dict "value" $app.extraVolumes "context" $) | nindent 8 }}
+        {{- end }}
+{{- end }}
+{{- end }}

@@ -1,0 +1,397 @@
+# Copyright wolf-on-k8s contributors.
+# SPDX-License-Identifier: MIT
+
+## @section Global parameters
+## @param global.imageRegistry Global Docker image registry
+## @param global.imagePullSecrets Global Docker registry secret names as an array
+## @param global.defaultStorageClass Global default StorageClass for Persistent Volume(s)
+##
+global:
+  imageRegistry: ""
+  imagePullSecrets: []
+  defaultStorageClass: ""
+
+## @section Common parameters
+## @param nameOverride String to partially override common.names.name
+## @param fullnameOverride String to fully override common.names.fullname
+## @param namespaceOverride String to fully override common.names.namespace
+## @param commonLabels Labels to add to all deployed objects
+## @param commonAnnotations Annotations to add to all deployed objects
+## @param extraDeploy Array of extra objects to deploy with the release
+##
+nameOverride: ""
+fullnameOverride: ""
+namespaceOverride: ""
+commonLabels: {}
+commonAnnotations: {}
+extraDeploy: []
+
+## @section Wolf server parameters
+## Wolf is the Moonlight server + headless compositor + hardware encoder.
+## Runs privileged (virtual gamepads via /dev/uinput) with hostNetwork
+## (Moonlight: TCP/UDP 47984-48010 + mDNS discovery).
+##
+## @param image.registry Wolf image registry
+## @param image.repository Wolf image repository
+## @param image.tag Wolf image tag
+## @param image.pullPolicy Wolf image pull policy
+## @param image.pullSecrets Wolf image pull secrets
+##
+image:
+  registry: ghcr.io
+  repository: games-on-whales/wolf
+  tag: stable
+  pullPolicy: IfNotPresent
+  pullSecrets: []
+## @param logLevel Wolf log level (TRACE, DEBUG, INFO, WARNING, ERROR)
+##
+logLevel: INFO
+## @param hostNetwork Use the node network namespace (required for Moonlight mDNS discovery and its fixed port range)
+##
+hostNetwork: true
+## @param extraEnvVars Extra env vars for the wolf container (list of {name,value})
+##
+extraEnvVars: []
+## @param resources Resources for the wolf container (GPU limit is injected separately from `gpu.*`)
+##
+resources:
+  requests:
+    cpu: 250m
+    memory: 256Mi
+  limits:
+    memory: 1536Mi
+## @param containerSecurityContext.enabled Enable the wolf container security context
+## @param containerSecurityContext.privileged Run privileged (required: /dev/uinput virtual gamepads, /dev/dri)
+##
+containerSecurityContext:
+  enabled: true
+  privileged: true
+  seLinuxOptions: {}
+## @param nodeSelector Node labels for the wolf pod. Pin to your GPU node, e.g. {gpu: nvidia} or {kubernetes.io/hostname: node1}. With >1 GPU node ALWAYS pin to one host - game homes live on that node's hostPaths.
+##
+nodeSelector: {}
+## @param tolerations Tolerations for the wolf pod (e.g. GPU-node taints)
+## @param affinity Affinity for the wolf pod
+## @param podLabels Extra labels for the wolf pod
+## @param podAnnotations Extra annotations for the wolf pod
+## @param priorityClassName Priority class for the wolf pod
+## @param terminationGracePeriodSeconds Grace period for the wolf pod
+##
+tolerations: []
+affinity: {}
+podLabels: {}
+podAnnotations: {}
+priorityClassName: ""
+terminationGracePeriodSeconds: 10
+## @param lifecycleHooks Override the default wolf container lifecycle hooks (default: socket-dir cleanup + GBM symlink hook on postStart)
+##
+lifecycleHooks: {}
+## @param initContainers Extra init containers for the wolf pod
+## @param sidecars Extra sidecar containers for the wolf pod
+## @param extraVolumes Extra volumes for the wolf pod
+## @param extraVolumeMounts Extra volume mounts for the wolf container
+##
+initContainers: []
+sidecars: []
+extraVolumes: []
+extraVolumeMounts: []
+## @param kubectlImage.registry kubectl image registry (init container; copies kubectl for the session shim)
+## @param kubectlImage.repository kubectl image repository
+## @param kubectlImage.tag kubectl image tag
+##
+kubectlImage:
+  registry: docker.io
+  repository: bitnami/kubectl
+  tag: latest
+  pullPolicy: IfNotPresent
+
+## @section GPU parameters
+## One switch for the GPU vendor. What it changes:
+##   - the extended resource requested on GPU containers (see `gpu.resource`)
+##   - NVIDIA only: NVIDIA_VISIBLE_DEVICES=all + NVIDIA_DRIVER_CAPABILITIES=all
+##     (NVENC needs the `video` capability) and /dev/nvidia* in the game pods'
+##     GOW_REQUIRED_DEVICES
+##   - the GBM symlink hook self-detects and no-ops on AMD/Intel
+## GPU sharing (NVIDIA time-slicing, Intel shared-dev-num) is a device-plugin /
+## cluster concern - workloads still request 1 unit.
+##
+## @param gpu.vendor GPU vendor: `nvidia`, `amd`, `intel` or `none` (software encoding)
+## @param gpu.resource Extended resource to request: `auto` (nvidia.com/gpu / amd.com/gpu / gpu.intel.com/i915 by vendor), an explicit name (MIG slice `nvidia.com/mig-1g.10gb`, time-slice rename `nvidia.com/gpu.shared`, new Intel driver `gpu.intel.com/xe`), or `""` to request nothing (no device plugin installed; privileged + /dev/dri hostPath is enough for access - use nodeSelector for placement)
+## @param gpu.count Number of GPU units to request per GPU container
+## @param gpu.runtimeClassName Pod runtimeClassName; set `nvidia` when the NVIDIA runtime is not the containerd default (common on k3s/RKE2)
+## @param gpu.renderNode DRM render node passed to Wolf (WOLF_RENDER_NODE), e.g. /dev/dri/renderD128; empty = Wolf's default
+##
+gpu:
+  vendor: nvidia
+  resource: auto
+  count: 1
+  runtimeClassName: ""
+  renderNode: ""
+
+## @section Host paths and devices
+## Wolf state, sockets and game homes are node-local hostPaths (a session
+## cannot span nodes - see README). All paths default under `paths.base`.
+##
+## @param paths.base Base hostPath for all Wolf state on the GPU node (Talos: use a writable mount like /var/mnt/...)
+## @param paths.config Wolf config dir (config.toml lives here); default `<base>/cfg`
+## @param paths.sockets Shared session sockets dir (Wayland/Pulse/API); default `<base>/sockets`
+## @param paths.homes Base dir for per-launcher homes; default `<base>/homes` (each app gets `<homes>/<name>`)
+##
+paths:
+  base: /var/lib/wolf
+  config: ""
+  sockets: ""
+  homes: ""
+## @param devices.uinput Mount /dev/uinput (virtual gamepads; kernel module `uinput` required on the node)
+## @param devices.input Mount /dev/input
+## @param devices.dri Mount /dev/dri (render nodes; required for all vendors)
+##
+devices:
+  uinput: true
+  input: true
+  dri: true
+
+## @section Session defaults (game pods)
+## @param session.width Default stream width
+## @param session.height Default stream height
+## @param session.refresh Default stream refresh rate
+## @param session.runSway Run sway compositor inside game pods
+## @param session.user Unprivileged user name inside game pods
+## @param session.uid UID for the game user
+## @param session.gid GID for the game user
+##
+session:
+  width: 2560
+  height: 1440
+  refresh: 60
+  runSway: true
+  user: retro
+  uid: 1000
+  gid: 1000
+
+## @section Game launchers (apps)
+## Each entry generates BOTH a Deployment (replicas 0, scaled up by the shim
+## when you pick it in Moonlight) AND its Wolf/Moonlight app definition (synced
+## into Wolf's config.toml through the local API by the apps-sync sidecar).
+## Games you install INSIDE a launcher are runtime data on its home volume -
+## no chart change needed.
+##
+## Per-app keys: enabled, title, image{registry,repository,tag}, args (extra
+## `KEY=VALUE` strings appended to the shim run_cmd), entries (extra Moonlight
+## entries on the same Deployment: [{title, args}]), env (extra container env),
+## home (hostPath override; default `<paths.homes>/<name>`), chownDirs (extra
+## dirs chowned to the game user on first start), swayTweaks (mount the sway
+## tweaks hook), resources (override appDefaults.resources), extraVolumes,
+## extraVolumeMounts.
+##
+## @extra apps.steam Steam launcher
+## @extra apps.heroic Heroic launcher
+## @extra apps.lutris Lutris launcher
+##
+apps:
+  ## Steam: best for your Steam library - Big Picture on a virtual display,
+  ## Proton preconfigured, gamepad-first. If most of your games are on Steam,
+  ## enable this one and you're done.
+  steam:
+    enabled: false
+    title: Steam
+    image:
+      registry: ghcr.io
+      repository: games-on-whales/steam
+      tag: edge
+    args: []
+    entries: []
+    env: []
+    home: ""
+    chownDirs: []
+    swayTweaks: false
+    resources: {}
+    extraVolumes: []
+    extraVolumeMounts: []
+  ## Heroic: best for Epic Games Store, GOG and Amazon Prime Gaming libraries -
+  ## a friendly launcher UI with Proton/Wine handled for you.
+  heroic:
+    enabled: false
+    title: Heroic
+    image:
+      registry: ghcr.io
+      repository: games-on-whales/heroic-games-launcher
+      tag: edge
+    args: []
+    entries: []
+    env: []
+    home: ""
+    chownDirs: []
+    swayTweaks: true
+    resources: {}
+    extraVolumes: []
+    extraVolumeMounts: []
+  ## Lutris: best for everything else - custom Wine setups, standalone
+  ## installers (/mnt/installers), emulators, battle.net-style launchers.
+  ## Power-user tool: full desktop-style GUI for installing; add a second
+  ## Moonlight entry with args ["WOLF_LUTRIS_GAMEPAD_UI_ENABLE=1"] for a
+  ## couch/gamepad frontend.
+  lutris:
+    enabled: false
+    title: Lutris
+    image:
+      registry: ghcr.io
+      repository: games-on-whales/lutris
+      tag: edge
+    args: ["WOLF_LUTRIS_GAMEPAD_UI_ENABLE=0"]
+    entries: []
+    # static baseline too (the GOW image defaults to gamepad UI = 1); the shim
+    # re-asserts the args value on every session start
+    env:
+      - name: WOLF_LUTRIS_GAMEPAD_UI_ENABLE
+        value: "0"
+    home: ""
+    chownDirs: ["/var/lutris"]
+    swayTweaks: true
+    resources: {}
+    extraVolumes:
+      - name: lutris-data
+        hostPath:
+          path: '{{ printf "%s/lutris-games" .Values.paths.base }}'
+          type: DirectoryOrCreate
+    extraVolumeMounts:
+      - name: lutris-data
+        mountPath: /var/lutris
+
+## @param appDefaults.resources Default resources for game containers (GPU limit injected from `gpu.*`)
+## @param appDefaults.extraEnvVars Extra env vars for ALL game containers
+## @param appDefaults.gowRequiredDevices Override GOW_REQUIRED_DEVICES (empty = auto by gpu.vendor)
+## @param appDefaults.startupTimeoutSeconds How long the shim waits for a game pod to become ready
+##
+appDefaults:
+  resources:
+    requests:
+      cpu: "2"
+      memory: 3Gi
+    limits:
+      memory: 9Gi
+  extraEnvVars: []
+  gowRequiredDevices: ""
+  startupTimeoutSeconds: 300
+## @param busyboxImage.registry busybox image registry (init container fixing home permissions)
+## @param busyboxImage.repository busybox image repository
+## @param busyboxImage.tag busybox image tag
+##
+busyboxImage:
+  registry: docker.io
+  repository: busybox
+  tag: stable
+  pullPolicy: IfNotPresent
+
+## @section Apps sync sidecar
+## Reconciles the app list above into Wolf's config.toml through Wolf's local
+## unix-socket API (GET/POST /api/v1/apps*). Preserves pairing state (Wolf
+## rewrites only the apps section). Only apps pointing at the chart's session
+## shim are considered managed; manually added apps are never touched.
+##
+## @param appsSync.enabled Enable the sync sidecar (disable to manage config.toml apps by hand)
+## @param appsSync.pruneDefault Also remove Wolf's stock docker-runner demo apps (they cannot work in this k8s setup)
+## @param appsSync.interval Reconcile interval in seconds
+## @param appsSync.image.registry Sync sidecar image registry
+## @param appsSync.image.repository Sync sidecar image repository (needs python3; stdlib only)
+## @param appsSync.image.tag Sync sidecar image tag
+## @param appsSync.resources Sync sidecar resources
+##
+appsSync:
+  enabled: true
+  pruneDefault: true
+  interval: 300
+  image:
+    registry: docker.io
+    repository: python
+    tag: 3-alpine
+    pullPolicy: IfNotPresent
+  resources:
+    requests:
+      cpu: 10m
+      memory: 32Mi
+    limits:
+      memory: 64Mi
+
+## @section Storage
+## @param storage.installers.enabled Create a shared RWX PVC for installers/mods, mounted at /mnt/installers in game pods
+## @param storage.installers.existingClaim Use an existing PVC instead
+## @param storage.installers.storageClass StorageClass (must support RWX, e.g. NFS); empty = cluster default
+## @param storage.installers.size Requested size
+## @param storage.installers.accessModes Access modes
+## @param storage.downloads.enabled Mount a read-only NFS share at /mnt/downloads in game pods
+## @param storage.downloads.server NFS server for downloads
+## @param storage.downloads.path NFS export path for downloads
+##
+storage:
+  installers:
+    enabled: false
+    existingClaim: ""
+    storageClass: ""
+    size: 200Gi
+    accessModes:
+      - ReadWriteMany
+  downloads:
+    enabled: false
+    server: ""
+    path: ""
+
+## @section Filebrowser (optional)
+## Simple HTTP file manager exposing game homes, installers and downloads -
+## handy for uploading saves and mods. NO AUTH - LAN use only.
+##
+## @param filebrowser.enabled Deploy filebrowser
+## @param filebrowser.image.registry Filebrowser image registry
+## @param filebrowser.image.repository Filebrowser image repository
+## @param filebrowser.image.tag Filebrowser image tag
+## @param filebrowser.service.type Service type
+## @param filebrowser.service.port Service port
+## @param filebrowser.service.nodePort Node port (when type is NodePort; empty = auto)
+## @param filebrowser.resources Filebrowser resources
+##
+filebrowser:
+  enabled: false
+  image:
+    registry: docker.io
+    repository: filebrowser/filebrowser
+    tag: latest
+    pullPolicy: IfNotPresent
+  service:
+    type: NodePort
+    port: 8080
+    nodePort: 30808
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      memory: 256Mi
+
+## @section RBAC parameters
+## @param serviceAccount.create Create a ServiceAccount for the wolf pod
+## @param serviceAccount.name ServiceAccount name override
+## @param serviceAccount.annotations ServiceAccount annotations
+## @param serviceAccount.automountServiceAccountToken Mount the SA token (required: the shim scales game Deployments)
+## @param rbac.create Create Role/RoleBinding letting the shim scale game Deployments in the namespace
+## @param rbac.rules Override the default RBAC rules
+##
+serviceAccount:
+  create: true
+  name: ""
+  annotations: {}
+  automountServiceAccountToken: true
+rbac:
+  create: true
+  rules: []
+
+## @section Diagnostic mode
+## @param diagnosticMode.enabled Run the wolf container with an inert command (sleep infinity) for debugging
+## @param diagnosticMode.command Command override for diagnostic mode
+## @param diagnosticMode.args Args override for diagnostic mode
+##
+diagnosticMode:
+  enabled: false
+  command:
+    - sleep
+  args:
+    - infinity

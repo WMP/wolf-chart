@@ -1,0 +1,65 @@
+CHART NAME: {{ .Chart.Name }}
+CHART VERSION: {{ .Chart.Version }}
+APP VERSION: {{ .Chart.AppVersion }}
+
+Wolf (Moonlight game streaming) has been deployed.
+
+{{- $enabled := list }}
+{{- range $name, $app := .Values.apps }}{{- if $app.enabled }}{{- $enabled = append $enabled $name }}{{- end }}{{- end }}
+
+Enabled launchers: {{ if $enabled }}{{ join ", " $enabled }}{{ else }}NONE - enable at least one with e.g. --set apps.steam.enabled=true{{ end }}
+
+Next steps:
+
+1. Wait for the wolf pod:
+     kubectl -n {{ include "common.names.namespace" . }} get pods -l app.kubernetes.io/component=server -w
+
+2. Pair a Moonlight client. Add the GPU node's IP in Moonlight, then fetch the
+   pairing prompt through Wolf's API socket:
+     kubectl -n {{ include "common.names.namespace" . }} exec deploy/{{ include "common.names.fullname" . }} -c wolf -- \
+       curl -s --unix-socket /tmp/sockets/wolf.sock http://localhost/api/v1/pair/pending
+   then confirm with the PIN shown by Moonlight:
+     kubectl -n {{ include "common.names.namespace" . }} exec deploy/{{ include "common.names.fullname" . }} -c wolf -- \
+       curl -s --unix-socket /tmp/sockets/wolf.sock -X POST -d '{"pair_secret":"<secret>","pin":"<PIN>"}' \
+       http://localhost/api/v1/pair/client
+
+3. Pick a launcher in Moonlight - its pod is scaled up on demand (first start
+   pulls the image; can take minutes).
+
+{{- if eq .Values.gpu.vendor "nvidia" }}
+
+GPU: NVIDIA ({{ include "wolf.gpu.resourceName" . | default "no extended resource requested" }})
+{{- else if eq .Values.gpu.vendor "none" }}
+
+GPU: none - Wolf falls back to software encoding (high CPU usage).
+{{- else }}
+
+GPU: {{ .Values.gpu.vendor }} ({{ include "wolf.gpu.resourceName" . | default "no extended resource requested" }}) - VAAPI/QSV encoding.
+{{- end }}
+
+NOTES:
+{{- if and (not (include "wolf.gpu.resourceName" .)) (not .Values.nodeSelector) (not .Values.affinity) }}
+- WARNING: no GPU resource is requested ({{ if eq .Values.gpu.vendor "none" }}gpu.vendor=none{{ else }}gpu.resource=""{{ end }}) and no
+  nodeSelector/affinity is set - NOTHING constrains this pod to your GPU node.
+  On a multi-node cluster set nodeSelector (e.g. kubernetes.io/hostname), or
+  the pod can land on a node without /dev/dri and without your game data.
+{{- end }}
+- Pods run privileged with hostPath device access. On PSA-enforcing clusters
+  label the namespace:
+    kubectl label ns {{ include "common.names.namespace" . }} pod-security.kubernetes.io/enforce=privileged
+- The node needs kernel modules: uinput, uhid, joydev (Talos:
+  machine.kernel.modules) and user namespaces enabled for Steam/Flatpak
+  (sysctl user.max_user_namespaces > 0).
+- Game homes and Wolf state live under {{ .Values.paths.base }} on the node the
+  wolf pod runs on. With more than one GPU node, pin wolf to one host via
+  nodeSelector (kubernetes.io/hostname) or your saves will "disappear" after a
+  reschedule. Scale-out = one release per node, each in its own namespace.
+{{- if not .Values.hostNetwork }}
+- WARNING: hostNetwork is disabled - Moonlight discovery/streaming will not
+  work without it in this chart's networking model.
+{{- end }}
+{{- if .Values.filebrowser.enabled }}
+- Filebrowser (NO AUTH, LAN only): port {{ .Values.filebrowser.service.nodePort | default .Values.filebrowser.service.port }} on the node.
+{{- end }}
+
+{{- include "wolf.validateValues" . }}

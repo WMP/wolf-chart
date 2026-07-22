@@ -1,0 +1,76 @@
+{{- if .Values.filebrowser.enabled }}
+# Simple HTTP file manager for uploading saves and mods.
+# /srv/homes      = per-launcher homes (saves, prefixes)
+# /srv/installers = shared RWX volume (mods, ripped discs)
+# /srv/downloads  = read-only NFS share
+apiVersion: {{ include "common.capabilities.deployment.apiVersion" . }}
+kind: Deployment
+metadata:
+  name: {{ printf "%s-filebrowser" (include "common.names.fullname" .) }}
+  namespace: {{ include "common.names.namespace" . | quote }}
+  labels: {{- include "common.labels.standard" (dict "customLabels" .Values.commonLabels "context" $) | nindent 4 }}
+    app.kubernetes.io/component: filebrowser
+  {{- if .Values.commonAnnotations }}
+  annotations: {{- include "common.tplvalues.render" (dict "value" .Values.commonAnnotations "context" $) | nindent 4 }}
+  {{- end }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {{- include "common.labels.matchLabels" (dict "customLabels" .Values.commonLabels "context" $) | nindent 6 }}
+      app.kubernetes.io/component: filebrowser
+  template:
+    metadata:
+      labels: {{- include "common.labels.standard" (dict "customLabels" .Values.commonLabels "context" $) | nindent 8 }}
+        app.kubernetes.io/component: filebrowser
+    spec:
+      # homes are node-local hostPaths - browse them where they live
+      affinity:
+        podAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchLabels: {{- include "wolf.serverMatchLabels" . | nindent 18 }}
+              topologyKey: kubernetes.io/hostname
+      securityContext:
+        runAsUser: {{ .Values.session.uid }}
+        runAsGroup: {{ .Values.session.gid }}
+        fsGroup: {{ .Values.session.gid }}
+      containers:
+        - name: filebrowser
+          image: {{ include "wolf.filebrowser.image" . }}
+          imagePullPolicy: {{ .Values.filebrowser.image.pullPolicy }}
+          args: ["--noauth", "-r", "/srv", "-p", {{ .Values.filebrowser.service.port | quote }}, "-a", "0.0.0.0", "-d", "/tmp/fb.db"]
+          ports:
+            - containerPort: {{ .Values.filebrowser.service.port }}
+          {{- if .Values.filebrowser.resources }}
+          resources: {{- toYaml .Values.filebrowser.resources | nindent 12 }}
+          {{- end }}
+          volumeMounts:
+            - name: homes
+              mountPath: /srv/homes
+            {{- if or .Values.storage.installers.enabled .Values.storage.installers.existingClaim }}
+            - name: installers
+              mountPath: /srv/installers
+            {{- end }}
+            {{- if .Values.storage.downloads.enabled }}
+            - name: downloads
+              mountPath: /srv/downloads
+              readOnly: true
+            {{- end }}
+      volumes:
+        - name: homes
+          hostPath:
+            path: {{ include "wolf.paths.homes" . }}
+            type: DirectoryOrCreate
+        {{- if or .Values.storage.installers.enabled .Values.storage.installers.existingClaim }}
+        - name: installers
+          persistentVolumeClaim:
+            claimName: {{ .Values.storage.installers.existingClaim | default (printf "%s-installers" (include "common.names.fullname" .)) }}
+        {{- end }}
+        {{- if .Values.storage.downloads.enabled }}
+        - name: downloads
+          nfs:
+            server: {{ required "storage.downloads.server is required when storage.downloads.enabled" .Values.storage.downloads.server }}
+            path: {{ required "storage.downloads.path is required when storage.downloads.enabled" .Values.storage.downloads.path }}
+            readOnly: true
+        {{- end }}
+{{- end }}
