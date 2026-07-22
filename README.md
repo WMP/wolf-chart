@@ -8,10 +8,7 @@ Xorg-based setups on GPU passthrough.
 
 **Model:** one `wolf` pod is the compositor + hardware encoder + Moonlight
 server. Each game launcher runs as its **own pod**, scaled `0 <-> 1` on demand
-by a shim wired into Wolf's `process` runner. This is a hand-rolled precursor
-to what [Fenrir](https://github.com/games-on-whales/fenrir) will do with CRDs
-once it matures — it keeps networking simple (flannel + hostNetwork, no CNI
-swap) and, crucially, works today.
+by a shim wired into Wolf's `process` runner.
 
 Built and tested on Talos Linux with the NVIDIA GPU Operator (driver + toolkit
 as Talos system extensions, `driver.enabled=false toolkit.enabled=false`), a
