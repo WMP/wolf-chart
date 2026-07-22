@@ -60,9 +60,25 @@ nodeSelector:
   kubernetes.io/hostname: my-gpu-node   # pin to your GPU node
 paths:
   base: /var/lib/wolf       # node-local state; Talos: use /var/mnt/...
+
+# All supported launchers - enable the ones you need:
 apps:
+  # Steam: your Steam library. Big Picture on a virtual display, Proton
+  # preconfigured, gamepad-first. If most of your games are on Steam,
+  # enable this one and you're done.
   steam:
     enabled: true
+  # Heroic: Epic Games Store, GOG and Amazon Prime Gaming libraries -
+  # a friendly launcher UI with Proton/Wine handled for you.
+  heroic:
+    enabled: false
+  # Lutris: everything else - custom Wine setups, standalone installers
+  # (drop them on /mnt/installers), emulators, battle.net-style launchers.
+  # Power-user tool: full GUI for installing; add a second Moonlight entry
+  # with args ["WOLF_LUTRIS_GAMEPAD_UI_ENABLE=1"] for a couch/gamepad
+  # frontend.
+  lutris:
+    enabled: false
 EOF
 
 helm upgrade --install wolf . -f my-values.yaml -n games --create-namespace
@@ -148,7 +164,7 @@ See `values.yaml` for the full annotated reference. The high-traffic knobs:
 | `paths.base` | node-local hostPath root for config/sockets/homes |
 | `session.{width,height,refresh,uid,gid}` | stream + user defaults for game pods |
 | `storage.installers.*` | shared RWX PVC mounted at `/mnt/installers` |
-| `storage.downloads.*` | read-only NFS share mounted at `/mnt/downloads` |
+| `apps.<name>.extraVolumes` / `extraVolumeMounts` | extra shares per launcher (e.g. a read-only NFS mount with installers) |
 | `filebrowser.enabled` | no-auth HTTP file manager for saves/mods (LAN only!) |
 | `appsSync.{enabled,pruneDefault,interval}` | the config.toml reconciler |
 | `extraDeploy` | arbitrary extra manifests rendered with the release |

@@ -157,11 +157,6 @@ spec:
             - name: installers
               mountPath: /mnt/installers
             {{- end }}
-            {{- if $.Values.storage.downloads.enabled }}
-            - name: downloads
-              mountPath: /mnt/downloads
-              readOnly: true
-            {{- end }}
             {{- if $app.extraVolumeMounts }}
             {{- include "common.tplvalues.render" (dict "value" $app.extraVolumeMounts "context" $) | nindent 12 }}
             {{- end }}
@@ -192,13 +187,6 @@ spec:
         - name: installers
           persistentVolumeClaim:
             claimName: {{ $.Values.storage.installers.existingClaim | default (printf "%s-installers" (include "common.names.fullname" $)) }}
-        {{- end }}
-        {{- if $.Values.storage.downloads.enabled }}
-        - name: downloads
-          nfs:
-            server: {{ required "storage.downloads.server is required when storage.downloads.enabled" $.Values.storage.downloads.server }}
-            path: {{ required "storage.downloads.path is required when storage.downloads.enabled" $.Values.storage.downloads.path }}
-            readOnly: true
         {{- end }}
         {{- if $app.extraVolumes }}
         {{- include "common.tplvalues.render" (dict "value" $app.extraVolumes "context" $) | nindent 8 }}

@@ -314,14 +314,14 @@ appsSync:
       memory: 64Mi
 
 ## @section Storage
+## Extra shares (e.g. a read-only NFS mount with ripped installers) can be
+## added per launcher via apps.<name>.extraVolumes + extraVolumeMounts.
+##
 ## @param storage.installers.enabled Create a shared RWX PVC for installers/mods, mounted at /mnt/installers in game pods
 ## @param storage.installers.existingClaim Use an existing PVC instead
 ## @param storage.installers.storageClass StorageClass (must support RWX, e.g. NFS); empty = cluster default
 ## @param storage.installers.size Requested size
 ## @param storage.installers.accessModes Access modes
-## @param storage.downloads.enabled Mount a read-only NFS share at /mnt/downloads in game pods
-## @param storage.downloads.server NFS server for downloads
-## @param storage.downloads.path NFS export path for downloads
 ##
 storage:
   installers:
@@ -331,13 +331,9 @@ storage:
     size: 200Gi
     accessModes:
       - ReadWriteMany
-  downloads:
-    enabled: false
-    server: ""
-    path: ""
 
 ## @section Filebrowser (optional)
-## Simple HTTP file manager exposing game homes, installers and downloads -
+## Simple HTTP file manager exposing game homes and installers -
 ## handy for uploading saves and mods. NO AUTH - LAN use only.
 ##
 ## @param filebrowser.enabled Deploy filebrowser

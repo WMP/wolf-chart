@@ -2,7 +2,6 @@
 # Simple HTTP file manager for uploading saves and mods.
 # /srv/homes      = per-launcher homes (saves, prefixes)
 # /srv/installers = shared RWX volume (mods, ripped discs)
-# /srv/downloads  = read-only NFS share
 apiVersion: {{ include "common.capabilities.deployment.apiVersion" . }}
 kind: Deployment
 metadata:
@@ -51,11 +50,6 @@ spec:
             - name: installers
               mountPath: /srv/installers
             {{- end }}
-            {{- if .Values.storage.downloads.enabled }}
-            - name: downloads
-              mountPath: /srv/downloads
-              readOnly: true
-            {{- end }}
       volumes:
         - name: homes
           hostPath:
@@ -65,12 +59,5 @@ spec:
         - name: installers
           persistentVolumeClaim:
             claimName: {{ .Values.storage.installers.existingClaim | default (printf "%s-installers" (include "common.names.fullname" .)) }}
-        {{- end }}
-        {{- if .Values.storage.downloads.enabled }}
-        - name: downloads
-          nfs:
-            server: {{ required "storage.downloads.server is required when storage.downloads.enabled" .Values.storage.downloads.server }}
-            path: {{ required "storage.downloads.path is required when storage.downloads.enabled" .Values.storage.downloads.path }}
-            readOnly: true
         {{- end }}
 {{- end }}
