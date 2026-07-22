@@ -57,6 +57,24 @@ nodeSelector:
 paths:
   base: /var/lib/wolf       # node-local state; Talos: use /var/mnt/...
 
+# Stream defaults for the game pods - match your Moonlight client/display:
+session:
+  width: 2560
+  height: 1440
+  refresh: 60
+
+# NOTE memory limits: game pods default to 9Gi limit / 3Gi request.
+# Heavy titles (modern AAA, shader compilation) can blow past 9Gi and the
+# game gets OOM-killed mid-session - raise the default here, or per
+# launcher via apps.<name>.resources.
+appDefaults:
+  resources:
+    requests:
+      cpu: "2"
+      memory: 3Gi
+    limits:
+      memory: 9Gi
+
 # All supported launchers - enable the ones you need:
 apps:
   # Steam: your Steam library. Big Picture on a virtual display, Proton
@@ -158,10 +176,11 @@ See `values.yaml` for the full annotated reference. The high-traffic knobs:
 |---|---|
 | `apps.<name>.enabled` | deploy the launcher + its Moonlight entry (default `false`) |
 | `apps.<name>.{image,home,args,entries,env,resources}` | per-launcher overrides |
+| `appDefaults.resources` | default game-pod resources — **memory limit `9Gi`**: too low for heavy titles (OOM-kill mid-session), raise here or per launcher |
 | `gpu.{vendor,resource,count,runtimeClassName,renderNode}` | GPU vendor switch (see above) |
 | `nodeSelector` | pin the wolf pod to your GPU node |
 | `paths.base` | node-local hostPath root for config/sockets/homes |
-| `session.{width,height,refresh,uid,gid}` | stream + user defaults for game pods |
+| `session.{width,height,refresh,runSway,user,uid,gid}` | stream resolution/refresh + in-pod user defaults for game pods |
 | `storage.installers.*` | shared RWX PVC mounted at `/mnt/installers` |
 | `apps.<name>.extraVolumes` / `extraVolumeMounts` | extra shares per launcher (e.g. a read-only NFS mount with installers) |
 | `filebrowser.enabled` | no-auth HTTP file manager for saves/mods (LAN only!) |
