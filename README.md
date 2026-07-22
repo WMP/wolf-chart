@@ -46,9 +46,8 @@ pre-chart raw manifests this grew out of live on the
 ## Install
 
 ```bash
-git clone https://github.com/WMP/wolf-chart
-cd wolf-chart
-helm dependency build .
+helm repo add wolf-chart https://wmp.github.io/wolf-chart
+helm repo update
 
 cat > my-values.yaml <<'EOF'
 gpu:
@@ -78,12 +77,15 @@ apps:
     enabled: false
 EOF
 
-helm upgrade --install wolf . -f my-values.yaml -n games --create-namespace
+helm upgrade --install wolf wolf-chart/wolf -f my-values.yaml -n games --create-namespace
 ```
 
 Then wait for the wolf pod, add the node's IP in Moonlight and pair — the
 post-install notes (`helm status wolf -n games`) contain the exact
 pairing commands (Wolf's API listens on a local unix socket).
+
+Installing from source instead: `git clone` this repo, then
+`helm dependency build . && helm upgrade --install wolf . -f my-values.yaml -n games --create-namespace`.
 
 ## How a session works
 

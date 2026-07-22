@@ -1,0 +1,48 @@
+name: Release chart
+
+# Packages the chart and publishes it to the Helm repo on gh-pages
+# (https://wmp.github.io/wolf-chart). Runs when chart content changes on main;
+# skips silently if the version in Chart.yaml is already published - bump
+# `version` to release.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - Chart.yaml
+      - Chart.lock
+      - values.yaml
+      - "templates/**"
+      - "files/**"
+  workflow_dispatch: {}
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: azure/setup-helm@v4
+      - name: Package chart
+        run: |
+          helm dependency build .
+          helm package . -d /tmp/pkg
+      - name: Publish to gh-pages Helm repo
+        run: |
+          PKG=$(ls /tmp/pkg/*.tgz)
+          NAME=$(basename "$PKG")
+          git worktree add /tmp/gh-pages gh-pages
+          if [ -e "/tmp/gh-pages/$NAME" ]; then
+            echo "$NAME already published - bump version in Chart.yaml to release"
+            exit 0
+          fi
+          cp "$PKG" /tmp/gh-pages/
+          cd /tmp/gh-pages
+          helm repo index . --url https://wmp.github.io/wolf-chart
+          git add "$NAME" index.yaml
+          git -c user.name=github-actions -c user.email=github-actions@github.com \
+            commit -m "Publish $NAME"
+          git push origin gh-pages
