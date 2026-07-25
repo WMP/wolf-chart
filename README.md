@@ -192,6 +192,15 @@ See `values.yaml` for the full annotated reference. The high-traffic knobs:
 
 ## Known limitations
 
+- **No sound for apps the sidecar creates until [wolf#466](https://github.com/games-on-whales/wolf/pull/466) lands.**
+  Wolf drops `start_audio_server` when an app is added through its API
+  ([wolf#465](https://github.com/games-on-whales/wolf/issues/465)): the session
+  starts a virtual compositor but no virtual sink, so the game's audio ends up in
+  `auto_null` and Moonlight is silent. Video is unaffected. Wolf parses the flag
+  correctly from `config.toml`, so the stop-gap is to set
+  `start_audio_server = true` in that app's `[[profiles.apps]]` block under
+  `paths.config` and restart the wolf pod; the value survives until apps-sync
+  recreates the entry (a title, args or icon change does that).
 - If a session ends via SIGKILL (Wolf killing the shim before its trap runs),
   the Deployment can be left at `replicas=1`. The in-pod wrapper waits
   `appDefaults.sessionWaitSeconds` (default 60) for a session socket and then
