@@ -35,6 +35,13 @@ spec:
     spec:
       # IpcMode:host from the Wolf app spec
       hostIPC: true
+      {{- if $.Values.appDefaults.scaleDownWhenNoSession }}
+      # lets the wrapper scale this Deployment to 0 when it finds no session
+      serviceAccountName: {{ include "wolf.serviceAccountName" $ }}
+      automountServiceAccountToken: true
+      {{- else }}
+      automountServiceAccountToken: false
+      {{- end }}
       {{- if $.Values.gpu.runtimeClassName }}
       runtimeClassName: {{ $.Values.gpu.runtimeClassName }}
       {{- end }}
@@ -51,6 +58,16 @@ spec:
       tolerations: {{- include "common.tplvalues.render" (dict "value" $.Values.tolerations "context" $) | nindent 8 }}
       {{- end }}
       initContainers:
+        {{- if $.Values.appDefaults.scaleDownWhenNoSession }}
+        # copies kubectl in for the wrapper's scale-down path
+        - name: fetch-kubectl
+          image: {{ include "wolf.kubectl.image" $ }}
+          imagePullPolicy: {{ $.Values.kubectlImage.pullPolicy }}
+          command: ["sh", "-c", "cp $(which kubectl) /shim/kubectl && chmod 755 /shim/kubectl"]
+          volumeMounts:
+            - name: shim-bin
+              mountPath: /shim
+        {{- end }}
         - name: fix-home-perms
           image: {{ include "wolf.busybox.image" $ }}
           imagePullPolicy: {{ $.Values.busyboxImage.pullPolicy }}
@@ -80,24 +97,40 @@ spec:
           command: ["/bin/bash", "-c"]
           # Wait for the compositor socket of an active Wolf session before
           # handing over to the image's entrypoint - sway dies instantly
-          # ("Could not connect to remote display") without it.
+          # ("Could not connect to remote display") without it. Wolf creates the
+          # socket before it runs the shim, so during a normal session start it
+          # is already there and the wait is a no-op.
           #
-          # When there is no session the wrapper idles instead of exiting: a
-          # Deployment pod always has restartPolicy=Always, so an exiting
-          # container - even with status 0 - is restarted by kubelet forever
-          # (this is what produced thousands of restarts on a Deployment left at
-          # replicas=1 after an unclean session end, where Wolf SIGKILLs the
-          # shim before its trap can scale back to 0). Idling keeps the pod
-          # Ready, and the next session start execs the entrypoint within
-          # seconds instead of paying for another image start.
+          # No session within the timeout means this Deployment was left at
+          # replicas=1 without one (Wolf SIGKILLs the shim before its trap can
+          # scale back to 0), so scale it to 0 and let the pod go: a game pod
+          # holds a whole GPU unit plus its CPU/memory requests, and it must not
+          # sit on them while nobody is streaming. Exiting instead is not an
+          # option - a Deployment pod always has restartPolicy=Always, so kubelet
+          # would restart the container forever (thousands of restarts is what
+          # this looked like in practice).
           args:
             - |
-              if ! ls /tmp/sockets/wayland-* >/dev/null 2>&1; then
-                echo "[wrapper] no active Wolf session yet - waiting for the compositor socket in /tmp/sockets"
+              for i in $(seq 1 {{ $.Values.appDefaults.sessionWaitSeconds }}); do
+                ls /tmp/sockets/wayland-* >/dev/null 2>&1 && break
+                [ "$i" = 1 ] && echo "[wrapper] waiting for a Wolf session socket in /tmp/sockets"
+                sleep 1
+              done
+              if ls /tmp/sockets/wayland-* >/dev/null 2>&1; then
+                echo "[wrapper] session socket found - starting the launcher"
+                exec /entrypoint.sh
               fi
-              until ls /tmp/sockets/wayland-* >/dev/null 2>&1; do sleep 2; done
-              echo "[wrapper] session socket found - starting the launcher"
-              exec /entrypoint.sh
+              {{- if $.Values.appDefaults.scaleDownWhenNoSession }}
+              NS="$(cat /var/run/secrets/kubernetes.io/serviceaccount/namespace 2>/dev/null || echo {{ $ns }})"
+              echo "[wrapper] no Wolf session after {{ $.Values.appDefaults.sessionWaitSeconds }}s - scaling {{ $deployName }} back to 0 to release the GPU unit"
+              /shim/kubectl -n "$NS" scale deploy {{ $deployName }} --replicas=0 ||
+                echo "[wrapper] scale-down failed (RBAC?) - idling instead of exiting, since kubelet would restart-loop us"
+              {{- else }}
+              echo "[wrapper] no Wolf session after {{ $.Values.appDefaults.sessionWaitSeconds }}s - idling (appDefaults.scaleDownWhenNoSession is off); this pod keeps holding its GPU unit"
+              {{- end }}
+              # keep the container alive until the pod is actually deleted;
+              # exiting here would just earn us a kubelet restart
+              while :; do sleep 3600; done
           # CapAdd + seccomp unconfined from the Wolf app spec
           securityContext:
             privileged: true
@@ -148,6 +181,10 @@ spec:
               mountPath: /tmp/sockets
             - name: home
               mountPath: /home/{{ $.Values.session.user }}
+            {{- if $.Values.appDefaults.scaleDownWhenNoSession }}
+            - name: shim-bin
+              mountPath: /shim
+            {{- end }}
             - name: scripts
               mountPath: /opt/gow/startup.d/05-session-env.sh
               subPath: 05-session-env.sh
@@ -179,6 +216,10 @@ spec:
           hostPath:
             path: {{ include "wolf.paths.sockets" $ }}
             type: Directory
+        {{- if $.Values.appDefaults.scaleDownWhenNoSession }}
+        - name: shim-bin
+          emptyDir: {}
+        {{- end }}
         - name: home
           hostPath:
             path: {{ $app.home | default (printf "%s/%s" (include "wolf.paths.homes" $) $name) }}

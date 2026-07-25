@@ -176,6 +176,7 @@ See `values.yaml` for the full annotated reference. The high-traffic knobs:
 |---|---|
 | `apps.<name>.enabled` | deploy the launcher + its Moonlight entry (default `false`) |
 | `apps.<name>.{image,home,args,entries,env,resources}` | per-launcher overrides |
+| `appDefaults.{sessionWaitSeconds,scaleDownWhenNoSession}` | how long a game pod waits for a session before scaling its own Deployment to 0 (releases the GPU unit; needs the SA token in game pods) |
 | `appDefaults.resources` | default game-pod resources — **memory limit `9Gi`**: too low for heavy titles (OOM-kill mid-session), raise here or per launcher |
 | `gpu.{vendor,resource,count,runtimeClassName,renderNode}` | GPU vendor switch (see above) |
 | `nodeSelector` | pin the wolf pod to your GPU node |
@@ -190,11 +191,14 @@ See `values.yaml` for the full annotated reference. The high-traffic knobs:
 ## Known limitations
 
 - If a session ends via SIGKILL (Wolf killing the shim before its trap runs),
-  the Deployment can be left at `replicas=1`. The in-pod wrapper then idles
-  waiting for a session socket instead of exiting: the pod stays `Running` and
-  keeps holding its GPU slot, but it does not restart-loop, and the next session
-  reuses it without another image start. A proper controller (Fenrir) is the
-  real fix.
+  the Deployment can be left at `replicas=1`. The in-pod wrapper waits
+  `appDefaults.sessionWaitSeconds` (default 60) for a session socket and then
+  scales the Deployment back to 0 itself, so a pod that nobody is streaming to
+  releases its GPU unit and CPU/memory requests. It never exits to achieve that -
+  a Deployment pod always has restartPolicy=Always, so exiting means an endless
+  kubelet restart loop. Set `appDefaults.scaleDownWhenNoSession: false` to keep
+  the ServiceAccount token out of the game pods; such a pod then idles on its GPU
+  unit instead. A proper controller (Fenrir) is still the cleaner fix.
 - Game-pod `replicas` are preserved across `helm upgrade` via `lookup`, which
   only works server-side: `helm template` and `helm diff` render `replicas: 0`
   (phantom drift when a session is active), and GitOps controllers

@@ -4,7 +4,7 @@ description: >-
   Wolf (games-on-whales) game streaming on Kubernetes: a Moonlight server pod
   (headless EGL compositor + hardware encoder) plus per-launcher game pods
   scaled 0<->1 on demand. Supports NVIDIA, AMD and Intel GPUs.
-version: 0.1.1
+version: 0.1.2
 appVersion: stable
 kubeVersion: ">=1.24.0-0"
 home: https://github.com/games-on-whales/wolf

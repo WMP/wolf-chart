@@ -262,6 +262,8 @@ apps:
 ## @param appDefaults.extraEnvVars Extra env vars for ALL game containers
 ## @param appDefaults.gowRequiredDevices Override GOW_REQUIRED_DEVICES (empty = auto by gpu.vendor)
 ## @param appDefaults.startupTimeoutSeconds How long the shim waits for a game pod to become ready
+## @param appDefaults.sessionWaitSeconds How long a starting game pod waits for the session's compositor socket before it concludes there is no session (Wolf creates the socket before running the shim, so a normal start needs no wait)
+## @param appDefaults.scaleDownWhenNoSession Let a game pod that found no session scale its own Deployment back to 0, releasing the GPU unit and its CPU/memory requests (needs the ServiceAccount token in the game pods). With `false` such a pod idles instead and keeps holding the GPU unit.
 ##
 appDefaults:
   resources:
@@ -273,6 +275,8 @@ appDefaults:
   extraEnvVars: []
   gowRequiredDevices: ""
   startupTimeoutSeconds: 300
+  sessionWaitSeconds: 60
+  scaleDownWhenNoSession: true
 ## @param busyboxImage.registry busybox image registry (init container fixing home permissions)
 ## @param busyboxImage.repository busybox image repository
 ## @param busyboxImage.tag busybox image tag
