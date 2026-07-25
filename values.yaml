@@ -317,8 +317,9 @@ appsSync:
 ## Extra shares (e.g. a read-only NFS mount with ripped installers) can be
 ## added per launcher via apps.<name>.extraVolumes + extraVolumeMounts.
 ##
-## @param storage.installers.enabled Create a shared RWX PVC for installers/mods, mounted at /mnt/installers in game pods
+## @param storage.installers.enabled Create a shared RWX PVC for installers/mods, mounted in the game pods
 ## @param storage.installers.existingClaim Use an existing PVC instead
+## @param storage.installers.mountPath Where the shared volume is mounted inside the game pods (launchers remember absolute paths of installed games - do not change it on an existing setup)
 ## @param storage.installers.storageClass StorageClass (must support RWX, e.g. NFS); empty = cluster default
 ## @param storage.installers.size Requested size
 ## @param storage.installers.accessModes Access modes
@@ -327,6 +328,7 @@ storage:
   installers:
     enabled: false
     existingClaim: ""
+    mountPath: /mnt/installers
     storageClass: ""
     size: 200Gi
     accessModes:
@@ -344,6 +346,9 @@ storage:
 ## @param filebrowser.service.port Service port
 ## @param filebrowser.service.nodePort Node port (when type is NodePort; empty = auto)
 ## @param filebrowser.resources Filebrowser resources
+## @param filebrowser.fsGroupChangePolicy When kubelet applies fsGroup to the mounted volumes: `OnRootMismatch` (recommended - a recursive chown of a large installers share delays every pod start) or `Always`
+## @param filebrowser.extraVolumes Extra volumes for the filebrowser pod (e.g. the same read-only share the launchers see)
+## @param filebrowser.extraVolumeMounts Extra volume mounts, conventionally under /srv/ so they show up in the browser
 ##
 filebrowser:
   enabled: false
@@ -362,6 +367,9 @@ filebrowser:
       memory: 64Mi
     limits:
       memory: 256Mi
+  fsGroupChangePolicy: OnRootMismatch
+  extraVolumes: []
+  extraVolumeMounts: []
 
 ## @section RBAC parameters
 ## @param serviceAccount.create Create a ServiceAccount for the wolf pod

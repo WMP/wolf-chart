@@ -181,18 +181,20 @@ See `values.yaml` for the full annotated reference. The high-traffic knobs:
 | `nodeSelector` | pin the wolf pod to your GPU node |
 | `paths.base` | node-local hostPath root for config/sockets/homes |
 | `session.{width,height,refresh,runSway,user,uid,gid}` | stream resolution/refresh + in-pod user defaults for game pods |
-| `storage.installers.*` | shared RWX PVC mounted at `/mnt/installers` |
+| `storage.installers.*` | shared RWX PVC (or `existingClaim`) mounted at `storage.installers.mountPath`, default `/mnt/installers` |
 | `apps.<name>.extraVolumes` / `extraVolumeMounts` | extra shares per launcher (e.g. a read-only NFS mount with installers) |
-| `filebrowser.enabled` | no-auth HTTP file manager for saves/mods (LAN only!) |
+| `filebrowser.enabled` | no-auth HTTP file manager for saves/mods (LAN only!); `filebrowser.extraVolumes`/`extraVolumeMounts` expose extra shares under `/srv` |
 | `appsSync.{enabled,pruneDefault,interval}` | the config.toml reconciler |
 | `extraDeploy` | arbitrary extra manifests rendered with the release |
 
 ## Known limitations
 
 - If a session ends via SIGKILL (Wolf killing the shim before its trap runs),
-  the Deployment can be left at `replicas=1`; the in-pod wrapper then exits
-  cleanly instead of crash-looping. A proper controller (Fenrir) is the real
-  fix.
+  the Deployment can be left at `replicas=1`. The in-pod wrapper then idles
+  waiting for a session socket instead of exiting: the pod stays `Running` and
+  keeps holding its GPU slot, but it does not restart-loop, and the next session
+  reuses it without another image start. A proper controller (Fenrir) is the
+  real fix.
 - Game-pod `replicas` are preserved across `helm upgrade` via `lookup`, which
   only works server-side: `helm template` and `helm diff` render `replicas: 0`
   (phantom drift when a session is active), and GitOps controllers

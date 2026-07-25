@@ -69,7 +69,8 @@ spec:
           volumeMounts:
             - name: home
               mountPath: /home/{{ $.Values.session.user }}
-            {{- if $app.extraVolumeMounts }}
+            {{- /* extra mounts only matter here when chownDirs point into them */}}
+            {{- if and $app.extraVolumeMounts $app.chownDirs }}
             {{- include "common.tplvalues.render" (dict "value" $app.extraVolumeMounts "context" $) | nindent 12 }}
             {{- end }}
       containers:
@@ -77,12 +78,25 @@ spec:
           image: {{ include "wolf.app.image" (dict "app" $app "context" $) }}
           imagePullPolicy: {{ $app.image.pullPolicy | default "IfNotPresent" }}
           command: ["/bin/bash", "-c"]
-          # wait for an active Wolf session socket; exit cleanly when there is
-          # none (e.g. replicas left at 1 after an unclean session end)
+          # Wait for the compositor socket of an active Wolf session before
+          # handing over to the image's entrypoint - sway dies instantly
+          # ("Could not connect to remote display") without it.
+          #
+          # When there is no session the wrapper idles instead of exiting: a
+          # Deployment pod always has restartPolicy=Always, so an exiting
+          # container - even with status 0 - is restarted by kubelet forever
+          # (this is what produced thousands of restarts on a Deployment left at
+          # replicas=1 after an unclean session end, where Wolf SIGKILLs the
+          # shim before its trap can scale back to 0). Idling keeps the pod
+          # Ready, and the next session start execs the entrypoint within
+          # seconds instead of paying for another image start.
           args:
             - |
-              for i in $(seq 1 120); do ls /tmp/sockets/wayland-* >/dev/null 2>&1 && break; sleep 1; done
-              if ! ls /tmp/sockets/wayland-* >/dev/null 2>&1; then echo "[wrapper] no active Wolf session - exiting cleanly"; exit 0; fi
+              if ! ls /tmp/sockets/wayland-* >/dev/null 2>&1; then
+                echo "[wrapper] no active Wolf session yet - waiting for the compositor socket in /tmp/sockets"
+              fi
+              until ls /tmp/sockets/wayland-* >/dev/null 2>&1; do sleep 2; done
+              echo "[wrapper] session socket found - starting the launcher"
               exec /entrypoint.sh
           # CapAdd + seccomp unconfined from the Wolf app spec
           securityContext:
@@ -155,7 +169,7 @@ spec:
             {{- end }}
             {{- if or $.Values.storage.installers.enabled $.Values.storage.installers.existingClaim }}
             - name: installers
-              mountPath: /mnt/installers
+              mountPath: {{ $.Values.storage.installers.mountPath }}
             {{- end }}
             {{- if $app.extraVolumeMounts }}
             {{- include "common.tplvalues.render" (dict "value" $app.extraVolumeMounts "context" $) | nindent 12 }}
