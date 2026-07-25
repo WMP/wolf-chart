@@ -152,9 +152,16 @@ devices:
   dri: true
 
 ## @section Session defaults (game pods)
-## @param session.width Default stream width
-## @param session.height Default stream height
-## @param session.refresh Default stream refresh rate
+## Geometry here is only the value a game pod STARTS with. The real stream
+## geometry is whatever the Moonlight client negotiates, and the session shim
+## pushes it into the Deployment's env before scaling the pod up - the GOW images
+## bake the resolution into the compositor config at container startup, so it has
+## to be container env. Keep these close to the client you use most and pods will
+## rarely need to be recreated for a geometry change.
+##
+## @param session.width Stream width a game pod starts with (the shim overrides it per session)
+## @param session.height Stream height a game pod starts with (the shim overrides it per session)
+## @param session.refresh Stream refresh rate a game pod starts with (the shim overrides it per session)
 ## @param session.runSway Run sway compositor inside game pods
 ## @param session.user Unprivileged user name inside game pods
 ## @param session.uid UID for the game user

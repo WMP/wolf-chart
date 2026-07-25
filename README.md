@@ -111,7 +111,10 @@ Installing from source instead: `git clone` this repo, then
 1. In Moonlight you pick an app; Wolf starts a session and runs the app's
    `run_cmd` = `bash /shim-cfg/session.sh <deployment> [ENV=VAL ...]`.
 2. The shim writes the compositor session env (`WAYLAND_DISPLAY`, `PULSE_*`,
-   `GAMESCOPE_*`) to a file on a shared hostPath, then
+   `GAMESCOPE_*`) to a file on a shared hostPath, pushes the geometry the client
+   negotiated into the Deployment's env (the GOW images bake the resolution into
+   the compositor config at container startup, so `session.width/height/refresh`
+   are only what a pod *starts* with), then
    `kubectl scale deploy <app> --replicas=1`.
 3. The game pod mounts the same shared socket dir, loads that env via a
    `startup.d` hook, and its client connects to Wolf's compositor.
