@@ -132,16 +132,17 @@ One Deployment may back several Moonlight entries (default entry + .entries).
 {{- range $name, $app := .Values.apps -}}
 {{- if $app.enabled -}}
 {{- $deploy := include "wolf.app.deployName" (dict "name" $name "context" $) -}}
-{{- $entries := list (dict "title" ($app.title | default $name) "args" ($app.args | default (list))) -}}
+{{- $entries := list (dict "title" ($app.title | default $name) "args" ($app.args | default (list)) "icon" ($app.icon | default "")) -}}
 {{- range ($app.entries | default (list)) -}}
-{{- $entries = append $entries (dict "title" .title "args" (.args | default (list))) -}}
+{{/* extra Moonlight entries share the launcher's icon unless they set their own */}}
+{{- $entries = append $entries (dict "title" .title "args" (.args | default (list)) "icon" (.icon | default ($app.icon | default ""))) -}}
 {{- end -}}
 {{- range $e := $entries -}}
 {{- $cmd := printf "bash %s %s" (include "wolf.shim.path" $) $deploy -}}
 {{- if $e.args -}}
 {{- $cmd = printf "%s %s" $cmd (join " " $e.args) -}}
 {{- end -}}
-{{- $entry := dict "title" $e.title "start_virtual_compositor" true "start_audio_server" true "runner" (dict "type" "process" "run_cmd" $cmd) -}}
+{{- $entry := dict "title" $e.title "start_virtual_compositor" true "start_audio_server" true "icon_png_path" $e.icon "runner" (dict "type" "process" "run_cmd" $cmd) -}}
 {{- if $.Values.gpu.renderNode -}}
 {{- $_ := set $entry "render_node" $.Values.gpu.renderNode -}}
 {{- end -}}

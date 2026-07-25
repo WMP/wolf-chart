@@ -19,7 +19,8 @@ pre-chart raw manifests this grew out of live on the
 ## What the chart gives you
 
 - **Launchers as values** — each entry under `apps:` renders BOTH the game
-  Deployment and its Moonlight menu entry. All default to `enabled: false`;
+  Deployment and its Moonlight menu entry (with the launcher's official
+  games-on-whales icon as box art; override with `apps.<name>.icon`). All default to `enabled: false`;
   `values.yaml` documents what each launcher is best for (Steam, Heroic,
   Lutris). Games you install *inside* a launcher are runtime data on its home
   volume — no chart change needed.
@@ -176,6 +177,7 @@ See `values.yaml` for the full annotated reference. The high-traffic knobs:
 |---|---|
 | `apps.<name>.enabled` | deploy the launcher + its Moonlight entry (default `false`) |
 | `apps.<name>.{image,home,args,entries,env,resources}` | per-launcher overrides |
+| `apps.<name>.icon` | box art in Moonlight — URL or path inside the wolf container, `""` for none (the three built-in launchers default to their games-on-whales icon) |
 | `appDefaults.{sessionWaitSeconds,scaleDownWhenNoSession}` | how long a game pod waits for a session before scaling its own Deployment to 0 (releases the GPU unit; needs the SA token in game pods) |
 | `appDefaults.resources` | default game-pod resources — **memory limit `9Gi`**: too low for heavy titles (OOM-kill mid-session), raise here or per launcher |
 | `gpu.{vendor,resource,count,runtimeClassName,renderNode}` | GPU vendor switch (see above) |

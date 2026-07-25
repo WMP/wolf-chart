@@ -176,9 +176,11 @@ session:
 ## Games you install INSIDE a launcher are runtime data on its home volume -
 ## no chart change needed.
 ##
-## Per-app keys: enabled, title, image{registry,repository,tag}, args (extra
-## `KEY=VALUE` strings appended to the shim run_cmd), entries (extra Moonlight
-## entries on the same Deployment: [{title, args}]), env (extra container env),
+## Per-app keys: enabled, title, icon (box art shown in Moonlight: a URL or a
+## path inside the wolf container; "" for none), image{registry,repository,tag},
+## args (extra `KEY=VALUE` strings appended to the shim run_cmd), entries (extra
+## Moonlight entries on the same Deployment: [{title, args, icon}] - icon
+## defaults to the launcher's), env (extra container env),
 ## home (hostPath override; default `<paths.homes>/<name>`), chownDirs (extra
 ## dirs chowned to the game user on first start), swayTweaks (mount the sway
 ## tweaks hook), resources (override appDefaults.resources), extraVolumes,
@@ -195,6 +197,8 @@ apps:
   steam:
     enabled: false
     title: Steam
+    # official games-on-whales artwork (wildlife app assets)
+    icon: https://games-on-whales.github.io/wildlife/apps/steam/assets/icon.png
     image:
       registry: ghcr.io
       repository: games-on-whales/steam
@@ -213,6 +217,8 @@ apps:
   heroic:
     enabled: false
     title: Heroic
+    # official games-on-whales artwork (wildlife app assets)
+    icon: https://games-on-whales.github.io/wildlife/apps/heroic-games-launcher/assets/icon.png
     image:
       registry: ghcr.io
       repository: games-on-whales/heroic-games-launcher
@@ -234,6 +240,8 @@ apps:
   lutris:
     enabled: false
     title: Lutris
+    # official games-on-whales artwork (wildlife app assets)
+    icon: https://games-on-whales.github.io/wildlife/apps/lutris/assets/icon.png
     image:
       registry: ghcr.io
       repository: games-on-whales/lutris

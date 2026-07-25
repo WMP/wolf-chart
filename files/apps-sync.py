@@ -120,6 +120,9 @@ def build_app(desired, sample):
             "support_hdr": False,
             "start_virtual_compositor": desired.get("start_virtual_compositor", True),
             "start_audio_server": desired.get("start_audio_server", True),
+            # box art shown in Moonlight; Wolf accepts a URL or an in-container
+            # path, and "" means no icon
+            "icon_png_path": desired.get("icon_png_path", "") or "",
             "runner": desired["runner"],
         }
     )
@@ -146,7 +149,9 @@ def reconcile(desired):
         drifted = False
         if managed and not stale:
             want = next(d for d in desired if d["title"] == app["title"])
-            drifted = want["runner"].get("run_cmd") != run_cmd
+            drifted = want["runner"].get("run_cmd") != run_cmd or (
+                (want.get("icon_png_path") or "") != (app.get("icon_png_path") or "")
+            )
         if (managed and (stale or drifted)) or (PRUNE_DEFAULT and is_docker and stale):
             api("POST", "/api/v1/apps/delete", {"id": app["id"]})
             log(f"deleted: {app['title']!r}")
