@@ -5,7 +5,40 @@ entries:
       licenses: MIT
     apiVersion: v2
     appVersion: stable
-    created: "2026-07-25T20:15:20.519122513Z"
+    created: "2026-07-25T20:51:40.405795125Z"
+    dependencies:
+    - name: common
+      repository: oci://registry-1.docker.io/bitnamicharts
+      tags:
+      - bitnami-common
+      version: 2.x.x
+    description: 'Wolf (games-on-whales) game streaming on Kubernetes: a Moonlight
+      server pod (headless EGL compositor + hardware encoder) plus per-launcher game
+      pods scaled 0<->1 on demand. Supports NVIDIA, AMD and Intel GPUs.'
+    digest: d53adf0e840a2ec00855d2a2a3447597c85fba38cd25c92ad554687a9c58b847
+    home: https://github.com/games-on-whales/wolf
+    icon: https://raw.githubusercontent.com/games-on-whales/wolf/stable/docs/images/wolf-logo.svg
+    keywords:
+    - game-streaming
+    - moonlight
+    - wolf
+    - games-on-whales
+    - gpu
+    - steam
+    kubeVersion: '>=1.24.0-0'
+    name: wolf
+    sources:
+    - https://github.com/WMP/wolf-chart
+    - https://github.com/games-on-whales/wolf
+    - https://github.com/games-on-whales/gow
+    urls:
+    - https://wmp.github.io/wolf-chart/wolf-0.1.4.tgz
+    version: 0.1.4
+  - annotations:
+      licenses: MIT
+    apiVersion: v2
+    appVersion: stable
+    created: "2026-07-25T20:51:40.403682524Z"
     dependencies:
     - name: common
       repository: oci://registry-1.docker.io/bitnamicharts
@@ -38,7 +71,7 @@ entries:
       licenses: MIT
     apiVersion: v2
     appVersion: stable
-    created: "2026-07-25T20:15:20.516879814Z"
+    created: "2026-07-25T20:51:40.401632318Z"
     dependencies:
     - name: common
       repository: oci://registry-1.docker.io/bitnamicharts
@@ -70,7 +103,7 @@ entries:
       licenses: MIT
     apiVersion: v2
     appVersion: stable
-    created: "2026-07-25T20:15:20.513770729Z"
+    created: "2026-07-25T20:51:40.398490481Z"
     dependencies:
     - name: common
       repository: oci://registry-1.docker.io/bitnamicharts
@@ -102,7 +135,7 @@ entries:
       licenses: MIT
     apiVersion: v2
     appVersion: stable
-    created: "2026-07-25T20:15:20.511618725Z"
+    created: "2026-07-25T20:51:40.396496281Z"
     dependencies:
     - name: common
       repository: oci://registry-1.docker.io/bitnamicharts
@@ -130,4 +163,4 @@ entries:
     urls:
     - https://wmp.github.io/wolf-chart/wolf-0.1.0.tgz
     version: 0.1.0
-generated: "2026-07-25T20:15:20.509253434Z"
+generated: "2026-07-25T20:51:40.394290254Z"
