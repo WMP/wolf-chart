@@ -40,6 +40,10 @@ pre-chart raw manifests this grew out of live on the
   container toolkit or GPU Operator.
 - Kernel modules on the node: `uinput`, `uhid`, `joydev` (virtual gamepads);
   user namespaces enabled (`user.max_user_namespaces > 0`) for Steam/Flatpak.
+- `systemd-udevd` on the node (`/run/udev`), mounted read-only into the game
+  pods: SDL and Wine enumerate controllers through udev, so without it Wolf's
+  virtual pad exists in `/dev/input` and no game sees it. Disable with
+  `devices.udev: false` if your nodes have no udev.
 - Pods run **privileged** with hostPath device access. On PSA-enforcing
   clusters: `kubectl label ns games pod-security.kubernetes.io/enforce=privileged`
 - Node-local storage path for Wolf state and game homes (`paths.base`).
@@ -186,6 +190,7 @@ See `values.yaml` for the full annotated reference. The high-traffic knobs:
 | `gpu.{vendor,resource,count,runtimeClassName,renderNode}` | GPU vendor switch (see above) |
 | `nodeSelector` | pin the wolf pod to your GPU node |
 | `paths.base` | node-local hostPath root for config/sockets/homes |
+| `session.shaderCacheSizeGiB` | cap for the driver's on-disk shader cache in the persistent homes — the default driver cap is small enough that a big title evicts its own entries and stutters again where it already compiled |
 | `session.{width,height,refresh,runSway,user,uid,gid}` | stream resolution/refresh + in-pod user defaults for game pods |
 | `storage.installers.*` | shared RWX PVC (or `existingClaim`) mounted at `storage.installers.mountPath`, default `/mnt/installers` |
 | `apps.<name>.extraVolumes` / `extraVolumeMounts` | extra shares per launcher (e.g. a read-only NFS mount with installers) |

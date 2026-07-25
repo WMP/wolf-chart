@@ -153,6 +153,14 @@ spec:
               value: {{ $.Values.session.runSway | quote }}
             - name: GOW_REQUIRED_DEVICES
               value: {{ include "wolf.gowRequiredDevices" $ | quote }}
+            # Make SDL enumerate joysticks by scanning /dev/input (plus inotify on
+            # it) instead of asking udev. udev's netlink monitor never fires in a
+            # pod that does not share the host network namespace, so with the udev
+            # backend a pad plugged in mid-session is invisible until the game
+            # restarts; the scan+inotify path picks it up. Override per app with
+            # apps.<name>.env if a title needs the udev backend.
+            - name: SDL_JOYSTICK_DISABLE_UDEV
+              value: "1"
             - name: UNAME
               value: {{ $.Values.session.user | quote }}
             - name: PUID
@@ -164,6 +172,17 @@ spec:
               value: all
             - name: NVIDIA_DRIVER_CAPABILITIES
               value: all
+            {{- end }}
+            {{- if gt (int $.Values.session.shaderCacheSizeGiB) 0 }}
+            {{- if eq $.Values.gpu.vendor "nvidia" }}
+            - name: __GL_SHADER_DISK_CACHE
+              value: "1"
+            - name: __GL_SHADER_DISK_CACHE_SIZE
+              value: {{ mul (int $.Values.session.shaderCacheSizeGiB) 1073741824 | quote }}
+            {{- else }}
+            - name: MESA_SHADER_CACHE_MAX_SIZE
+              value: {{ printf "%dG" (int $.Values.session.shaderCacheSizeGiB) | quote }}
+            {{- end }}
             {{- end }}
             {{- if $.Values.appDefaults.extraEnvVars }}
             {{- include "common.tplvalues.render" (dict "value" $.Values.appDefaults.extraEnvVars "context" $) | nindent 12 }}
@@ -204,6 +223,12 @@ spec:
             - name: dri
               mountPath: /dev/dri
             {{- end }}
+            {{- if $.Values.devices.udev }}
+            # read-only: the game only needs to look devices up, never to change them
+            - name: udev
+              mountPath: /run/udev
+              readOnly: true
+            {{- end }}
             {{- if or $.Values.storage.installers.enabled $.Values.storage.installers.existingClaim }}
             - name: installers
               mountPath: {{ $.Values.storage.installers.mountPath }}
@@ -237,6 +262,12 @@ spec:
         - name: dri
           hostPath:
             path: /dev/dri
+        {{- end }}
+        {{- if $.Values.devices.udev }}
+        - name: udev
+          hostPath:
+            path: /run/udev
+            type: Directory
         {{- end }}
         {{- if or $.Values.storage.installers.enabled $.Values.storage.installers.existingClaim }}
         - name: installers

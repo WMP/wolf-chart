@@ -145,11 +145,13 @@ paths:
 ## @param devices.uinput Mount /dev/uinput (virtual gamepads; kernel module `uinput` required on the node)
 ## @param devices.input Mount /dev/input
 ## @param devices.dri Mount /dev/dri (render nodes; required for all vendors)
+## @param devices.udev Mount the node's /run/udev read-only into the game pods. SDL and Wine enumerate gamepads through udev, and Wolf's virtual pads only exist in the node's udev database - without this a controller is present in /dev/input but no game sees it. Set to false on nodes without systemd-udevd (the pods would fail to start on a missing /run/udev).
 ##
 devices:
   uinput: true
   input: true
   dri: true
+  udev: true
 
 ## @section Session defaults (game pods)
 ## Geometry here is only the value a game pod STARTS with. The real stream
@@ -166,6 +168,7 @@ devices:
 ## @param session.user Unprivileged user name inside game pods
 ## @param session.uid UID for the game user
 ## @param session.gid GID for the game user
+## @param session.shaderCacheSizeGiB Cap for the GPU driver's on-disk shader cache in the game homes, in GiB (NVIDIA `__GL_SHADER_DISK_CACHE_SIZE`, mesa `MESA_SHADER_CACHE_MAX_SIZE`). Drivers default to a cache small enough that a big title evicts its own entries, so stutter returns in places that were already compiled - the homes are persistent volumes, so a bigger cache pays off across sessions. Set to 0 to leave the driver default alone.
 ##
 session:
   width: 2560
@@ -175,6 +178,7 @@ session:
   user: retro
   uid: 1000
   gid: 1000
+  shaderCacheSizeGiB: 8
 
 ## @section Game launchers (apps)
 ## Each entry generates BOTH a Deployment (replicas 0, scaled up by the shim
