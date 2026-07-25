@@ -5,7 +5,39 @@ entries:
       licenses: MIT
     apiVersion: v2
     appVersion: stable
-    created: "2026-07-25T20:00:48.607014109Z"
+    created: "2026-07-25T20:10:14.407236604Z"
+    dependencies:
+    - name: common
+      repository: oci://registry-1.docker.io/bitnamicharts
+      tags:
+      - bitnami-common
+      version: 2.x.x
+    description: 'Wolf (games-on-whales) game streaming on Kubernetes: a Moonlight
+      server pod (headless EGL compositor + hardware encoder) plus per-launcher game
+      pods scaled 0<->1 on demand. Supports NVIDIA, AMD and Intel GPUs.'
+    digest: be7a2c14525b02cba6d8636a1ccf4f87c265ad7ba160facbbf2394593b5f19b6
+    home: https://github.com/games-on-whales/wolf
+    keywords:
+    - game-streaming
+    - moonlight
+    - wolf
+    - games-on-whales
+    - gpu
+    - steam
+    kubeVersion: '>=1.24.0-0'
+    name: wolf
+    sources:
+    - https://github.com/WMP/wolf-chart
+    - https://github.com/games-on-whales/wolf
+    - https://github.com/games-on-whales/gow
+    urls:
+    - https://wmp.github.io/wolf-chart/wolf-0.1.2.tgz
+    version: 0.1.2
+  - annotations:
+      licenses: MIT
+    apiVersion: v2
+    appVersion: stable
+    created: "2026-07-25T20:10:14.403996424Z"
     dependencies:
     - name: common
       repository: oci://registry-1.docker.io/bitnamicharts
@@ -37,7 +69,7 @@ entries:
       licenses: MIT
     apiVersion: v2
     appVersion: stable
-    created: "2026-07-25T20:00:48.604855267Z"
+    created: "2026-07-25T20:10:14.401977591Z"
     dependencies:
     - name: common
       repository: oci://registry-1.docker.io/bitnamicharts
@@ -65,4 +97,4 @@ entries:
     urls:
     - https://wmp.github.io/wolf-chart/wolf-0.1.0.tgz
     version: 0.1.0
-generated: "2026-07-25T20:00:48.601251105Z"
+generated: "2026-07-25T20:10:14.399763113Z"
